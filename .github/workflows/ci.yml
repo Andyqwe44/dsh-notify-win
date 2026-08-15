@@ -17,8 +17,10 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - name: Syntax check
+        working-directory: dsh-notify-win
         run: npm run check
       - name: Smoke test
+        working-directory: dsh-notify-win
         run: npm test
 
   powershell-parse:
@@ -31,7 +33,7 @@ jobs:
           $tokens = $null
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile(
-            (Join-Path $PWD 'lib/notify.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+            (Join-Path $PWD 'dsh-notify-win/lib/notify.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) {
             $errors | ForEach-Object { Write-Error $_ }
             exit 1
