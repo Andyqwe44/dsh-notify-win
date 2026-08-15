@@ -64,3 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prefixes the body with the project name — the git remote origin repository
   name when the session's cwd is a git work tree, otherwise the cwd folder
   name — so multi-project setups know which task just finished.
+- README install guide rewritten for the official flow (`dsh plugin --profile
+  web add github:Andyqwe44/dsh-notify-win`, with pnpm prerequisite shims and
+  the SSH fallback), verified on a real profile via pnpm 11 through corepack.

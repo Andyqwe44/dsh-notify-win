@@ -23,35 +23,62 @@ DeepSeek Harness 图标闪烁**（系统暖色脉冲，`FlashWindowEx`）：
 本包是标准的 DSH **bundle 插件**：自带 `cordis.patch.yml`，成为 profile
 依赖后即自动注册进组合树。
 
-### 从 npm 安装（发布后推荐）
+### 1. 前置：pnpm 可用
+
+`dsh plugin` 会转发给 `pnpm`。若 `pnpm` 未安装：
 
 ```powershell
+# 方式 A：管理员 PowerShell（安装官方 shim）
+corepack enable
+
+# 方式 B：无管理员权限——在 PATH 目录放一个用户级 shim
+Set-Content -Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\pnpm.cmd" -Value "@echo off`r`ncorepack pnpm %*`r`n"
+corepack pnpm --version   # 首次运行会下载 pnpm；确认能打印版本号
+```
+
+### 2. 安装（官方命令）
+
+```powershell
+# 直接从 GitHub 安装（无需先发布 npm）：
+dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
+
+# 若 github: 失败（网络受限），改用 SSH 形式（需已配置 SSH 密钥）：
+dsh plugin --profile web add git+ssh://git@github.com/Andyqwe44/dsh-notify-win.git
+
+# npm 发布后，普通形式同样可用：
 dsh plugin --profile web add dsh-notify-win
 ```
 
 （`dsh plugin` 会在 profile 目录里执行 `pnpm add`，并把任何声明了
 `dsh.bundle` 的依赖自动加入 profile 的 bundle 层栈。）
 
-### 从 git clone 安装（无需 npm）
+### 3. 验证
+
+```powershell
+dsh --profile web --dump-config   # 找到：# == dsh-notify-win / - id: dsh-notify-win
+```
+
+### 4. 重启并测试
+
+**重启 harness**（`dsh web`）——插件默认启用，且因存在于 profile 组合里，
+重启后依然保持启用。之后随便完成一个任务：第一条通知还会**自动完成品牌
+身份注册**（开始菜单快捷方式 + AppUserModelID，一次性）。若第一条 toast
+的标题仍显示 `DeepSeekHarness` 且没有图标，重启一次资源管理器
+（`Stop-Process -Name explorer -Force; Start-Process explorer`）或注销重登，
+刷新通知身份缓存即可。
+
+### 手工兜底（无 pnpm）
 
 ```powershell
 git clone https://github.com/Andyqwe44/dsh-notify-win.git
 
-# 让 profile 能解析到该包（在 profile 的 node_modules 里建一个 junction，
-# -Target 换成你的 clone 路径）：
+# 把包 junction 到 profile 的 node_modules：
 New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-notify-win" -Target "D:\path\to\dsh-notify-win"
 
-# 在 profile 清单里注册 bundle：
-#   "$env:USERPROFILE\.dsh\profiles\web\package.json"
-#     "dependencies": { "dsh-notify-win": "^0.1.0" },
-#     "dsh": { "profile": { "bundles": [ ..., "dsh-notify-win" ] } }
-
-# 验证组合树里有这一行：
-dsh --profile web --dump-config   # 找到：# == dsh-notify-win / - id: dsh-notify-win
+# 在 "$env:USERPROFILE\.dsh\profiles\web\package.json" 注册：
+#   "dependencies": { "dsh-notify-win": "github:Andyqwe44/dsh-notify-win" },
+#   "dsh": { "profile": { "bundles": [ ..., "dsh-notify-win" ] } }
 ```
-
-完成后**重启 harness**（`dsh web`）。插件默认启用；因为存在于 profile 组合
-里，重启后依然保持启用。
 
 ## 启用 / 禁用（即开关）
 

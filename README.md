@@ -26,36 +26,63 @@ one (Windows showing a notification for the harness process).
 The package is a standard DSH **bundle** plugin: it ships its own
 `cordis.patch.yml` and registers itself once it is a profile dependency.
 
-### From npm (recommended after publishing)
+### 1. Prerequisite: pnpm on PATH
+
+`dsh plugin` forwards to `pnpm`. If `pnpm` is not installed:
 
 ```powershell
+# Option A: admin PowerShell (installs the official shims)
+corepack enable
+
+# Option B: no admin — user-level shim in a PATH directory
+Set-Content -Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\pnpm.cmd" -Value "@echo off`r`ncorepack pnpm %*`r`n"
+corepack pnpm --version   # first run downloads pnpm; verify it prints a version
+```
+
+### 2. Install (official command)
+
+```powershell
+# From GitHub directly (no npm publish needed):
+dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
+
+# If github: fails (blocked network), use the SSH form (SSH key required):
+dsh plugin --profile web add git+ssh://git@github.com/Andyqwe44/dsh-notify-win.git
+
+# After npm publication, the plain form works too:
 dsh plugin --profile web add dsh-notify-win
 ```
 
-(`dsh plugin` runs `pnpm add` in the profile and automatically adds any
-`dsh.bundle`-declaring dependency to the profile's bundle layer stack.)
+`dsh plugin` runs `pnpm add` in the profile and automatically adds any
+`dsh.bundle`-declaring dependency to the profile's bundle layer stack.
 
-### From a git clone (no npm)
+### 3. Verify
+
+```powershell
+dsh --profile web --dump-config   # look for: # == dsh-notify-win / - id: dsh-notify-win
+```
+
+### 4. Restart and test
+
+**Restart the harness** (`dsh web`) — the plugin is enabled by default and
+stays enabled across restarts because it lives in the profile composition.
+Then complete any task; the first notification also **self-registers the
+branded toast identity** (Start Menu shortcut + AppUserModelID, one-time).
+If the toast header still shows `DeepSeekHarness` without an icon after the
+first toast, restart Explorer (`Stop-Process -Name explorer -Force; Start-Process explorer`) or sign out/in once to refresh the notification
+identity cache.
+
+### Manual fallback (no pnpm)
 
 ```powershell
 git clone https://github.com/Andyqwe44/dsh-notify-win.git
 
-# Make the package resolvable from the profile (a junction into the profile
-# node_modules farm; adjust the -Target to your clone path):
+# Junction the package into the profile node_modules farm:
 New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-notify-win" -Target "D:\path\to\dsh-notify-win"
 
-# Register the bundle in the profile manifest:
-#   "$env:USERPROFILE\.dsh\profiles\web\package.json"
-#     "dependencies": { "dsh-notify-win": "^0.1.0" },
-#     "dsh": { "profile": { "bundles": [ ..., "dsh-notify-win" ] } }
-
-# Verify the composed tree contains the row:
-dsh --profile web --dump-config   # look for: # == dsh-notify-win / - id: dsh-notify-win
+# Register in "$env:USERPROFILE\.dsh\profiles\web\package.json":
+#   "dependencies": { "dsh-notify-win": "github:Andyqwe44/dsh-notify-win" },
+#   "dsh": { "profile": { "bundles": [ ..., "dsh-notify-win" ] } }
 ```
-
-**Restart the harness** (`dsh web`) afterwards. The plugin is enabled by
-default and stays enabled across restarts because it lives in the profile
-composition.
 
 ## Enable / disable (the switch)
 
