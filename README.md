@@ -1,5 +1,7 @@
 # dsh-notify-win
 
+English | [中文](README.zh.md)
+
 DeepSeek Harness (DSH) host plugin for Windows: shows a **native toast**
 (VSCode-Copilot style, bottom-right) and **flashes the DeepSeek Harness
 taskbar button** (system warm pulse, `FlashWindowEx`) when:
@@ -138,6 +140,7 @@ dsh-notify-win/
 │   └── headless-overlay.yml   # Test overlay for end-to-end boot
 ├── cordis.patch.yml           # DSH bundle patch: inserts the plugin row
 ├── package.json               # dsh.bundle declaration + npm metadata
+├── README.md / README.zh.md   # English / 中文 documentation
 ├── CHANGELOG.md
 └── LICENSE
 ```
