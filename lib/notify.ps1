@@ -24,7 +24,11 @@ try {
   $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
   $doc.LoadXml($xml)
   $toast = New-Object Windows.UI.Notifications.ToastNotification $doc
-  $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('DeepSeekHarness')
+  # Use the system-registered PowerShell identity: toasts with an unregistered
+  # AppUserModelID are silently dropped on Win10/11, while this identity (a
+  # Start-Menu registered shortcut) reliably displays.
+  $toastAppId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
+  $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($toastAppId)
   $notifier.Show($toast)
   $toastShown = $true
 } catch {

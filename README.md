@@ -95,7 +95,7 @@ template).
 | --- | --- |
 | Trigger "done" | `agent/status` event with `status: 'idle'` (root agents only; subagents are skipped via `delegationDepth`) |
 | Trigger "question" | `approval/request` waterfall (fires + calls `next()`), plus `tools/execute` for `ask_user_question` (fires + calls `next()`) |
-| Toast | `lib/notify.ps1` → WinRT `Windows.UI.Notifications` (native toast), falls back to a `NotifyIcon` balloon |
+| Toast | `lib/notify.ps1` → WinRT `Windows.UI.Notifications` (native toast) under the system-registered PowerShell identity (unregistered AUMIDs are silently dropped by Win10/11), falls back to a `NotifyIcon` balloon |
 | Taskbar flash | `lib/notify.ps1` → `EnumWindows` finds the top-level window whose title starts with `DeepSeek Harness`, then `FlashWindowEx` (`FLASHW_ALL \| FLASHW_TIMERNOFG` = 15, flashes until the window is focused) |
 | Execution | `ctx.subprocess.spawn(powershell -NoProfile -NonInteractive -WindowStyle Hidden -File notify.ps1 ...)`, fire-and-forget; PowerShell resolved like the official `dsh-pwsh-local` (pwsh 7 install → PATH → Windows PowerShell 5.1) |
 
@@ -106,6 +106,13 @@ plain consumer row, safe in any profile, no isolate realm needed.
 
 - **Flash color**: `FlashWindowEx` uses the system's own warm-pulse highlight;
   a custom pure-orange flash is not possible through the public Windows API.
+- **Flash only when the window is in the background**: Windows never flashes
+  the taskbar button of the window you are currently looking at — that is
+  system behavior, and it is exactly the point (drawing you back to a window
+  you are not watching).
+- **Toast identity**: the toast is shown under the system-registered
+  "Windows PowerShell" identity (a registered AUMID is required for reliable
+  display; a dedicated branded AUMID registration is future work).
 - **Cancel = done**: stopping a running turn also lands the agent in `idle`,
   so a cancelled task still triggers the "done" notification (the status
   event does not carry the stop cause).

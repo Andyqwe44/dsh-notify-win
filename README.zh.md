@@ -90,7 +90,7 @@ dsh --profile web --dump-config   # 找到：# == dsh-notify-win / - id: dsh-not
 | --- | --- |
 | 「完成」触发 | `agent/status` 事件 `status: 'idle'`（仅根 agent；子代理通过 `delegationDepth` 跳过） |
 | 「待回答」触发 | `approval/request` 瀑布（触发通知 + 调用 `next()` 放行），以及 `ask_user_question` 的 `tools/execute`（同样触发 + `next()`） |
-| 弹窗 | `lib/notify.ps1` → WinRT `Windows.UI.Notifications`（原生 toast），失败回退 `NotifyIcon` 气泡 |
+| 弹窗 | `lib/notify.ps1` → WinRT `Windows.UI.Notifications`（原生 toast），使用系统已注册的 PowerShell 身份（未注册的 AUMID 会被 Win10/11 静默丢弃），失败回退 `NotifyIcon` 气泡 |
 | 任务栏闪烁 | `lib/notify.ps1` → `EnumWindows` 找到标题以 `DeepSeek Harness` 开头的顶层窗口，再调 `FlashWindowEx`（`FLASHW_ALL \| FLASHW_TIMERNOFG` = 15，一直闪到窗口获得焦点） |
 | 执行方式 | `ctx.subprocess.spawn(powershell -NoProfile -NonInteractive -WindowStyle Hidden -File notify.ps1 ...)`，即发即忘；PowerShell 按官方 `dsh-pwsh-local` 的策略解析（pwsh 7 安装目录 → PATH → Windows PowerShell 5.1） |
 
@@ -101,6 +101,10 @@ dsh --profile web --dump-config   # 找到：# == dsh-notify-win / - id: dsh-not
 
 - **闪烁颜色**：`FlashWindowEx` 用的是系统自带的暖色脉冲高亮；通过公开
   Windows API 无法自定义成纯橙色。
+- **只有窗口在后台时才会闪烁**：Windows 永远不会为「你正在看的窗口」闪烁
+  任务栏——这是系统行为，也正是它的意义（把你拉回没在看的窗口）。
+- **Toast 身份**：通知以系统已注册的「Windows PowerShell」身份显示（可靠
+  显示需要已注册的 AUMID；注册专属品牌 AUMID 留作后续工作）。
 - **取消也算完成**：停止正在运行的一轮同样会让 agent 进入 `idle`，因此取消
   任务也会触发「完成」通知（status 事件不携带停止原因）。
 - **改动需重启**：在 web profile 上安装/禁用后需重启（出厂模板禁用了

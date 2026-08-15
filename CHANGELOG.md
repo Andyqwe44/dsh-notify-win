@@ -20,3 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standard `disabled` flag.
 - Configurable notification texts via the row's `config`.
 - Logic smoke test (`test/smoke.mjs`) and CI workflow.
+
+### Fixed
+
+- Toast identity: use the system-registered PowerShell AppUserModelID instead
+  of an unregistered one, which Windows 10/11 silently drops (verified on a
+  real machine with a three-variant visibility probe).
