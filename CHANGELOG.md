@@ -41,3 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose active-tab title contains `DeepSeek` / `:3080` / `DeepSeek Harness`,
   which works even when another project's tab is the active one in the same
   Edge window (Edge in the foreground still deliberately skips flashing).
+- Toast now shows the **DeepSeek Harness logo** as its app icon: the official
+  favicon is rendered to theme-matched PNGs (black for light, white for dark
+  Windows theme) and injected via `appLogoOverride` (the AUMID identity —
+  and therefore the toast app name — remains Windows PowerShell).
+
+### Assets
+
+- `lib/dsh-logo-light.png` / `lib/dsh-logo-dark.png` / `lib/dsh-logo.svg` —
+  generated from the official DSH favicon served by the harness
+  (`/favicon.svg`, part of the MIT-licensed DeepSeek Harness project).

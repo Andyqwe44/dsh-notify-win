@@ -95,7 +95,7 @@ template).
 | --- | --- |
 | Trigger "done" | `agent/status` event with `status: 'idle'` (root agents only; subagents are skipped via `delegationDepth`) |
 | Trigger "question" | `approval/request` waterfall (fires + calls `next()`), plus `tools/execute` for `ask_user_question` (fires + calls `next()`) |
-| Toast | `lib/notify.ps1` → WinRT `Windows.UI.Notifications` (native toast) under the system-registered PowerShell identity (unregistered AUMIDs are silently dropped by Win10/11), falls back to a `NotifyIcon` balloon |
+| Toast | `lib/notify.ps1` → WinRT `Windows.UI.Notifications` (native toast) under the system-registered PowerShell identity (unregistered AUMIDs are silently dropped by Win10/11), with the **DeepSeek Harness logo** as the app icon (`appLogoOverride`; theme-matched light/dark PNG generated from the official favicon), falls back to a `NotifyIcon` balloon |
 | Taskbar flash | `lib/notify.ps1` → `EnumWindows` finds the top-level window whose title starts with `DeepSeek Harness`, then `FlashWindowEx` (`FLASHW_ALL \| FLASHW_TIMERNOFG` = 15, flashes until the window is focused) |
 | Execution | `ctx.subprocess.spawn(powershell -NoProfile -NonInteractive -WindowStyle Hidden -File notify.ps1 ...)`, fire-and-forget; PowerShell resolved like the official `dsh-pwsh-local` (pwsh 7 install → PATH → Windows PowerShell 5.1) |
 
@@ -112,7 +112,9 @@ plain consumer row, safe in any profile, no isolate realm needed.
   you are not watching).
 - **Toast identity**: the toast is shown under the system-registered
   "Windows PowerShell" identity (a registered AUMID is required for reliable
-  display; a dedicated branded AUMID registration is future work).
+  display; a dedicated branded AUMID registration is future work). The toast
+  **icon** is the DeepSeek Harness logo via `appLogoOverride`; the app name
+  in the notification center still reads "Windows PowerShell".
 - **Cancel = done**: stopping a running turn also lands the agent in `idle`,
   so a cancelled task still triggers the "done" notification (the status
   event does not carry the stop cause).

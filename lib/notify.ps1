@@ -24,7 +24,24 @@ try {
   [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
   $titleXml = $Title -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
   $bodyXml = $Body -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
+  # DeepSeek Harness logo as the toast app logo (overrides the PowerShell
+  # identity's icon). The favicon is monochrome - black on light, white on
+  # dark - and toast rendering does not apply CSS media queries, so the
+  # variant is chosen here from the OS theme preference.
+  $lightTheme = $true
+  try {
+    $theme = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -ErrorAction Stop
+    $lightTheme = $theme -ne 0
+  } catch {
+    $lightTheme = $true
+  }
+  $logoFile = Join-Path $PSScriptRoot $(if ($lightTheme) { 'dsh-logo-light.png' } else { 'dsh-logo-dark.png' })
+  $logoUri = ''
+  if (Test-Path $logoFile) {
+    $logoUri = 'file:///' + ($logoFile -replace '\\', '/')
+  }
   $xml = '<toast><visual><binding template="ToastGeneric">' +
+    $(if ($logoUri -ne '') { '<image placement="appLogoOverride" src="' + $logoUri + '"/>' } else { '' }) +
     '<text>' + $titleXml + '</text>' +
     '<text>' + $bodyXml + '</text>' +
     '</binding></visual></toast>'
