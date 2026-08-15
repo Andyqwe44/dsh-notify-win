@@ -118,8 +118,12 @@ plain consumer row, safe in any profile, no isolate realm needed.
   event does not carry the stop cause).
 - **Restart required** after install/disable changes on the web profile
   (web HMR is disabled in the shipped template).
-- One notification per root agent turn; a 1.5 s dedup window (configurable)
-  prevents double pops from back-to-back events.
+- Notifications are deduplicated **per session** (project): each project's
+  completion always surfaces, while a single session's rapid idle/approval
+  events within the `dedupMs` window (default 1500 ms) collapse into one.
+- There is no flashing for an Edge/msedge window you are currently looking at
+  (Windows never flashes a foreground window); when the dsh tab is in the
+  background the taskbar button of the hosting Edge window is flashed.
 
 ## Development
 

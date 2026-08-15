@@ -10,8 +10,15 @@ $toastShown = $false
 $balloonShown = $false
 
 # ---------------------------------------------------------------------------
-# 1. Native Windows 11 toast (WinRT), VSCode-Copilot-style bottom-right toast.
+# 1. Native Windows 11 toast (WinRT). A monotonic per-process sequence id keeps
+#    every toast in the Win11 notification queue instead of being dropped when
+#    finished tasks arrive close together (multi-project bursts).
 # ---------------------------------------------------------------------------
+$seqPath = Join-Path ([System.IO.Path]::GetTempPath()) 'dsh-notify-tag'
+$seq = 0
+try { $seq = [int](Get-Content $seqPath -ErrorAction SilentlyContinue) } catch { $seq = 0 }
+$seq += 1
+try { Set-Content -Path $seqPath -Value $seq -ErrorAction SilentlyContinue } catch {}
 try {
   [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
   [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
@@ -29,6 +36,7 @@ try {
   # Start-Menu registered shortcut) reliably displays.
   $toastAppId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
   $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($toastAppId)
+  $toast.Tag = 'dsh-notify-' + $seq
   $notifier.Show($toast)
   $toastShown = $true
 } catch {
@@ -84,7 +92,11 @@ public static class DshFlash {
     if ([DshFlash]::IsWindowVisible($h)) {
       $sb = New-Object System.Text.StringBuilder 512
       [void][DshFlash]::GetWindowText($h, $sb, $sb.Capacity)
-      if ($sb.ToString() -like 'DeepSeek Harness*') {
+      $title = $sb.ToString()
+      # An Edge/msedge window's title is the ACTIVE tab, which may be another
+      # project while the dsh tab sits in the same window. Match the dsh tab
+      # by title OR the harness port/name so multi-tab setups still flash.
+      if ($title -like 'DeepSeek*' -or $title -like '*3080* - DeepSeek*' -or $title -like '*:3080*' -or $title -like '*DeepSeek Harness*') {
         $script:found = $h
         return $false
       }

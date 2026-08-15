@@ -26,3 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Toast identity: use the system-registered PowerShell AppUserModelID instead
   of an unregistered one, which Windows 10/11 silently drops (verified on a
   real machine with a three-variant visibility probe).
+
+## [0.1.1] - 2026-08-15
+
+### Changed
+
+- **Per-session dedup** (was a single global window): different sessions
+  (projects) now each notify independently — two projects finishing
+  back-to-back no longer collapse into one toast. Anti-spam moves to the
+  session level (same session's rapid idle/approval still collapse).
+- Toast now carries a per-process **sequence tag**, so a burst of finished
+  tasks is queued and displayed rather than dropped by Win11.
+- Taskbar-flash window-matching widened: it flashes any Edge/msedge window
+  whose active-tab title contains `DeepSeek` / `:3080` / `DeepSeek Harness`,
+  which works even when another project's tab is the active one in the same
+  Edge window (Edge in the foreground still deliberately skips flashing).

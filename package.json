@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-win",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DeepSeek Harness (DSH) host plugin: native Windows toast plus taskbar flash when a task finishes or the user's answer is needed",
   "type": "module",
   "main": "lib/index.js",

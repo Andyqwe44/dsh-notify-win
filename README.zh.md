@@ -109,8 +109,10 @@ dsh --profile web --dump-config   # 找到：# == dsh-notify-win / - id: dsh-not
   任务也会触发「完成」通知（status 事件不携带停止原因）。
 - **改动需重启**：在 web profile 上安装/禁用后需重启（出厂模板禁用了
   web HMR）。
-- 每个根 agent 一轮触发一次通知；1.5 秒去重窗口（可配置）避免连续事件
-  重复弹窗。
+- 通知按**会话（项目）**去重：每个项目完成都会各弹一条，同一会话在
+  `dedupMs`（默认 1500ms）内连续出现的 idle/审批事件才合并为一条。
+- 处于前台的 Edge/msedge 窗口不会闪烁（Windows 不闪前台窗口）；dsh Tab
+  在后台时，所归属的 Edge 窗口任务栏按钮会闪烁。
 
 ## 开发
 
