@@ -32,12 +32,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Andyqwe44/dsh-plugin.git"
+    "url": "git+https://github.com/Andyqwe44/dsh-notify-win.git"
   },
   "bugs": {
-    "url": "https://github.com/Andyqwe44/dsh-plugin/issues"
+    "url": "https://github.com/Andyqwe44/dsh-notify-win/issues"
   },
-  "homepage": "https://github.com/Andyqwe44/dsh-plugin/tree/main/dsh-notify-win#readme",
+  "homepage": "https://github.com/Andyqwe44/dsh-notify-win#readme",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
