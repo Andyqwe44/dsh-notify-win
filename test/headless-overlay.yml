@@ -1,0 +1,4 @@
+# Test overlay: load dsh-notify-win in a headless one-shot boot.
+- insert:
+    - id: dsh-notify-win
+      name: dsh-notify-win

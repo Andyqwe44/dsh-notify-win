@@ -1,0 +1,46 @@
+{
+  "name": "dsh-notify-win",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness (DSH) host plugin: native Windows toast plus taskbar flash when a task finishes or the user's answer is needed",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "check": "node --check lib/index.js",
+    "test": "node test/smoke.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "notification",
+    "toast",
+    "windows",
+    "taskbar"
+  ],
+  "author": "Andyq",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Andyqwe44/dsh-notify-win.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Andyqwe44/dsh-notify-win/issues"
+  },
+  "homepage": "https://github.com/Andyqwe44/dsh-notify-win#readme",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
