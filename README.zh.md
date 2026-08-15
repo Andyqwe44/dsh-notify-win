@@ -82,6 +82,7 @@ dsh --profile web --dump-config   # 找到：# == dsh-notify-win / - id: dsh-not
     askTitle: 'DeepSeek Harness · 有问题等你回答'
     askBody: '助手向你提了一个问题，请切换到 DeepSeek Harness 查看。'
     dedupMs: 1500   # 两次通知之间的去重窗口（毫秒）
+    showProject: true  # 正文前缀显示项目标识（git remote origin 仓库名，否则 cwd 目录名）
 ```
 
 ## 工作原理

@@ -1,8 +1,11 @@
 // Smoke test for dsh-notify-win plugin logic with a mocked ctx.
 // Covers the multi-project guarantee: different sessions ALWAYS each notify
 // (per-session dedup), same-session rapid idle is suppressed, subagents are
-// skipped, and waterfall listeners call next().
+// skipped, waterfall listeners call next(), and project labels resolve.
 import plugin from '../lib/index.js'
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 function makeCtx(spawns, handlers) {
   return {
@@ -108,6 +111,61 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   const dOk = kinds.length === 2 && kinds[0] === 'done' && kinds[1] === 'question'
   console.log(`Case D cross-session burst: ${spawns.length} events, kinds=${JSON.stringify(kinds)} -> ${dOk ? 'PASS' : 'FAIL'}`)
   if (!dOk) process.exit(1)
+}
+
+// --- Case E/F/G: project label resolution. ---
+{
+  const tmp = await mkdtemp(join(tmpdir(), 'dsh-notify-test-'))
+  const repoDir = join(tmp, 'fixture-repo')
+  await mkdir(join(repoDir, '.git'), { recursive: true })
+  await writeFile(join(repoDir, '.git', 'config'),
+    '[core]\n\trepositoryformatversion = 0\n[remote "origin"]\n\turl = git@github.com:Andyqwe44/dsh-notify-win.git\n', 'utf8')
+  const plainDir = join(tmp, 'no-git-folder')
+  await mkdir(plainDir, { recursive: true })
+
+  // E: git remote origin name is prefixed.
+  {
+    const spawns = []
+    const h = {}
+    plugin.apply(makeCtx(spawns, h), {})
+    const session = { id: 'E', header: { delegationDepth: 0, cwd: repoDir } }
+    h['agent/status']({ status: 'idle', agent: { session } })
+    await YIELD()
+    const body = spawns[0]?.argv[spawns[0].argv.indexOf('-Body') + 1]
+    const eOk = body === 'dsh-notify-win：任务已完成，可以查看结果。'
+    console.log(`Case E git repo label: body="${body}" -> ${eOk ? 'PASS' : 'FAIL'}`)
+    if (!eOk) process.exit(1)
+  }
+
+  // F: no git -> cwd folder name.
+  {
+    const spawns = []
+    const h = {}
+    plugin.apply(makeCtx(spawns, h), {})
+    const session = { id: 'F', header: { delegationDepth: 0, cwd: plainDir } }
+    h['agent/status']({ status: 'idle', agent: { session } })
+    await YIELD()
+    const body = spawns[0]?.argv[spawns[0].argv.indexOf('-Body') + 1]
+    const fOk = body === 'no-git-folder：任务已完成，可以查看结果。'
+    console.log(`Case F folder label: body="${body}" -> ${fOk ? 'PASS' : 'FAIL'}`)
+    if (!fOk) process.exit(1)
+  }
+
+  // G: showProject=false disables the prefix.
+  {
+    const spawns = []
+    const h = {}
+    plugin.apply(makeCtx(spawns, h), { showProject: false })
+    const session = { id: 'G', header: { delegationDepth: 0, cwd: repoDir } }
+    h['agent/status']({ status: 'idle', agent: { session } })
+    await YIELD()
+    const body = spawns[0]?.argv[spawns[0].argv.indexOf('-Body') + 1]
+    const gOk = body === '任务已完成，可以查看结果。'
+    console.log(`Case G showProject=false: body="${body}" -> ${gOk ? 'PASS' : 'FAIL'}`)
+    if (!gOk) process.exit(1)
+  }
+
+  await rm(tmp, { recursive: true, force: true })
 }
 
 console.log('ALL SMOKE TESTS PASSED')

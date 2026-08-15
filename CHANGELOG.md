@@ -48,6 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Assets
 
-- `lib/dsh-logo-light.png` / `lib/dsh-logo-dark.png` / `lib/dsh-logo.svg` —
-  generated from the official DSH favicon served by the harness
-  (`/favicon.svg`, part of the MIT-licensed DeepSeek Harness project).
+- `lib/dsh-logo-light.png` / `lib/dsh-logo-dark.png` / `lib/dsh-logo.svg` /
+  `lib/dsh-logo.ico` — generated from the official DSH favicon served by the
+  harness (`/favicon.svg`, part of the MIT-licensed DeepSeek Harness project).
+
+### Added
+
+- **Branded toast identity**: registers the `DeepSeekHarness` AppUserModelID
+  (registry `DisplayName`/`IconUri` + a Start-Menu shortcut carrying the
+  AUMID, created via ShellLink COM + the property system), so the toast
+  header shows **DeepSeek Harness** with the DSH logo instead of
+  "Windows PowerShell". Falls back to the system PowerShell identity when
+  registration is unavailable.
+- **Project label in the notification body**: `showProject` (default true)
+  prefixes the body with the project name — the git remote origin repository
+  name when the session's cwd is a git work tree, otherwise the cwd folder
+  name — so multi-project setups know which task just finished.

@@ -87,6 +87,7 @@ template).
     askTitle: 'DeepSeek Harness · 有问题等你回答'
     askBody: '助手向你提了一个问题，请切换到 DeepSeek Harness 查看。'
     dedupMs: 1500   # suppression window between two notifications
+    showProject: true  # prefix body with the project label (git remote origin repo name, else cwd folder name)
 ```
 
 ## How it works
