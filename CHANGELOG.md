@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `activationType="protocol"` when present.
 - `notify.ps1` registers the `dsh-notify://` protocol pointing at the installed
   DeepSeek Harness Edge PWA (detected via `Get-StartApps`).
+- `lib/focus-dsh.ps1` reuses an existing DeepSeek Harness window when present,
+  and only launches a new PWA window when none is open.
 - Notify subprocess output is ignored to avoid terminal noise / log spills.
 
 ## [0.1.0] - 2026-08-15

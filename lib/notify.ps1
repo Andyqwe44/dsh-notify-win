@@ -158,7 +158,11 @@ try {
     } | Select-Object -First 1
     if ($pwa) { $pwaAumid = $pwa.AppID }
   } catch {}
-  if ($pwaAumid) {
+  $focusScript = Join-Path $PSScriptRoot 'focus-dsh.ps1'
+  if (Test-Path $focusScript) {
+    $handler = "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -File `"$focusScript`""
+    Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
+  } elseif ($pwaAumid) {
     $handler = "cmd.exe /c start `"`" shell:AppsFolder\$pwaAumid"
     Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
   }
