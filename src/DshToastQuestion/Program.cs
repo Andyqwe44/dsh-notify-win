@@ -284,6 +284,12 @@ static class Program
                   .Append(XmlEscape(content))
                   .Append("\"/>");
             }
+            // Add an explicit way to switch to the custom input without
+            // submitting. Only when the 5-item selection limit allows it.
+            if (options.Count < 5)
+            {
+                sb.Append("<selection id=\"__custom__\" content=\"自定义答案\"/>");
+            }
             sb.Append("</input>");
             sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选）\"/>");
             sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
