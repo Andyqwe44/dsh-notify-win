@@ -217,12 +217,15 @@ try {
         $sb = New-Object System.Text.StringBuilder
         [void]$sb.Append('<input id="custom" type="text" placeHolderContent="Custom answer"/>')
         foreach ($option in $question.options) {
-          $labelXml = & $xmlEsc $option.label
+          $desc = if ($null -ne $option.description) { [string]$option.description } else { '' }
+          $content = if ($desc -ne '') { [string]$option.label + ' - ' + $desc } else { [string]$option.label }
+          $contentXml = & $xmlEsc $content
+          $tooltipAttr = if ($desc -ne '') { ' hint-toolTip="' + (& $xmlEsc $desc) + '"' } else { '' }
           $uri = 'dsh-notify://answer?session=' + [uri]::EscapeDataString($SessionId) +
             '&qid=' + [uri]::EscapeDataString($QuestionId) +
             '&option=' + [uri]::EscapeDataString([string]$option.label) + '&custom='
           $uriXml = & $xmlEsc $uri
-          [void]$sb.Append('<action content="' + $labelXml + '" arguments="' + $uriXml + '" activationType="protocol"/>')
+          [void]$sb.Append('<action content="' + $contentXml + '" arguments="' + $uriXml + '" activationType="protocol"' + $tooltipAttr + '/>')
         }
         $submitUri = 'dsh-notify://answer?session=' + [uri]::EscapeDataString($SessionId) +
           '&qid=' + [uri]::EscapeDataString($QuestionId) +
