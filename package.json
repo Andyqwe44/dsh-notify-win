@@ -1,7 +1,7 @@
 {
   "name": "dsh-notify-win",
   "version": "0.1.1",
-  "description": "DeepSeek Harness (DSH) host plugin: native Windows toast plus taskbar flash when a task finishes or the user's answer is needed",
+  "description": "Native Windows toast + taskbar flash for DeepSeek Harness when a task finishes or your input is needed.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -14,7 +14,8 @@
   ],
   "scripts": {
     "check": "node --check lib/index.js",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs",
+    "prepublishOnly": "npm run check && npm test"
   },
   "keywords": [
     "deepseek-harness",
@@ -38,6 +39,10 @@
     "url": "https://github.com/Andyqwe44/dsh-notify-win/issues"
   },
   "homepage": "https://github.com/Andyqwe44/dsh-notify-win#readme",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

@@ -1,159 +1,126 @@
 # dsh-notify-win
 
+> DeepSeek Harness (DSH) Windows notification plugin — native toast + taskbar flash when a task finishes or your input is needed.
+
 English | [中文](README.zh.md)
 
-DeepSeek Harness (DSH) host plugin for Windows: shows a **native toast**
-(VSCode-Copilot style, bottom-right) and **flashes the DeepSeek Harness
-taskbar button** (system warm pulse, `FlashWindowEx`) when:
+![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
+![license](https://img.shields.io/badge/license-MIT-green)
+![version](https://img.shields.io/badge/version-0.1.1-blue)
 
-- **a task finishes** — the harness detects that the model API response ended
-  and no tool call is continuing the dialogue round (root agent went `idle`);
-- **an answer is needed** — an approval/decision request is waiting, or the
-  assistant asked you a direct question (`ask_user_question`).
+## ✨ Features
 
-The trigger is the harness's own lifecycle, **not a model tool call**, so no
-DSH model-approval is involved. The only permission involved is the OS-level
-one (Windows showing a notification for the harness process).
+- 🔔 **Native Windows toast** (bottom-right, Win10/11 system style)
+- 💡 **Taskbar flash** (`FlashWindowEx`) when DSH is in the background
+- ✅ Triggers when a **task finishes** (root agent goes `idle`)
+- ❓ Triggers when **your input is needed** (approval / `ask_user_question`)
+- 🖼️ Hero banner with the DeepSeek Harness logo (light/dark theme aware)
+- 🚀 Fire-and-forget: no service, no model approval, no settings namespace
 
-## Requirements
-
-- Windows 10/11, DeepSeek Harness with any profile (`web` recommended).
-- PowerShell 7 or Windows PowerShell 5.1 (either works; 5.1 is probed
-  automatically as a fallback).
-
-## Install
-
-The package is a standard DSH **bundle** plugin: it ships its own
-`cordis.patch.yml` and registers itself once it is a profile dependency.
-
-### 1. Prerequisite: pnpm on PATH
-
-`dsh plugin` forwards to `pnpm`. If `pnpm` is not installed:
+## 🚀 One-line install
 
 ```powershell
-# Option A: admin PowerShell (installs the official shims)
-corepack enable
-
-# Option B: no admin — user-level shim in a PATH directory
-Set-Content -Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\pnpm.cmd" -Value "@echo off`r`ncorepack pnpm %*`r`n"
-corepack pnpm --version   # first run downloads pnpm; verify it prints a version
-```
-
-### 2. Install (official command)
-
-```powershell
-# From GitHub directly (no npm publish needed):
-dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
-
-# If github: fails (blocked network), use the SSH form (SSH key required):
-dsh plugin --profile web add git+ssh://git@github.com/Andyqwe44/dsh-notify-win.git
-
-# After npm publication, the plain form works too:
 dsh plugin --profile web add dsh-notify-win
 ```
 
-`dsh plugin` runs `pnpm add` in the profile and automatically adds any
-`dsh.bundle`-declaring dependency to the profile's bundle layer stack.
+> Requires `pnpm` on PATH (`corepack enable` if missing). See [Install](#install) for details.
 
-### 3. Verify
+## Install
 
-```powershell
-dsh --profile web --dump-config   # look for: # == dsh-notify-win / - id: dsh-notify-win
-```
+1. **Prerequisite: pnpm**
 
-### 4. Restart and test
+   ```powershell
+   corepack enable
+   ```
 
-**Restart the harness** (`dsh web`) — the plugin is enabled by default and
-stays enabled across restarts because it lives in the profile composition.
-Then complete any task; the first notification also **self-registers the
-branded toast identity** (Start Menu shortcut + AppUserModelID, one-time).
-If the toast header still shows `DeepSeekHarness` without an icon after the
-first toast, restart Explorer (`Stop-Process -Name explorer -Force; Start-Process explorer`) or sign out/in once to refresh the notification
-identity cache.
+   Or without admin, put a user-level shim in a PATH directory:
 
-### Manual fallback (no pnpm)
+   ```powershell
+   Set-Content -Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\pnpm.cmd" -Value "@echo off`r`ncorepack pnpm %*`r`n"
+   corepack pnpm --version
+   ```
 
-```powershell
-git clone https://github.com/Andyqwe44/dsh-notify-win.git
+2. **Install the plugin**
 
-# Junction the package into the profile node_modules farm:
-New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-notify-win" -Target "D:\path\to\dsh-notify-win"
+   ```powershell
+   # From npm (recommended)
+   dsh plugin --profile web add dsh-notify-win
 
-# Register in "$env:USERPROFILE\.dsh\profiles\web\package.json":
-#   "dependencies": { "dsh-notify-win": "github:Andyqwe44/dsh-notify-win" },
-#   "dsh": { "profile": { "bundles": [ ..., "dsh-notify-win" ] } }
-```
+   # Or directly from GitHub:
+   dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
-## Enable / disable (the switch)
+   # If github: is blocked, use SSH:
+   dsh plugin --profile web add git+ssh://git@github.com/Andyqwe44/dsh-notify-win.git
+   ```
 
-The load/disable switch is the standard `disabled` flag on the plugin row —
-edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
+3. **Verify**
 
-```yaml
-# disable:
-- id: dsh-notify-win
-  disabled: true
+   ```powershell
+   dsh --profile web --dump-config   # look for: # == dsh-notify-win / - id: dsh-notify-win
+   ```
 
-# re-enable (remove the override or set false):
-- id: dsh-notify-win
-  disabled: false
-```
+4. **Restart and test**
 
-A restart applies the change (web profile HMR is disabled in the shipped
-template).
+   ```powershell
+   dsh web
+   ```
 
-## Customize texts
+   Complete any task. The first notification self-registers the branded toast identity (Start Menu shortcut + AppUserModelID, one-time). If the toast header still shows `DeepSeekHarness` without an icon, restart Explorer once:
+
+   ```powershell
+   Stop-Process -Name explorer -Force; Start-Process explorer
+   ```
+
+## Requirements
+
+- Windows 10/11
+- DeepSeek Harness, any profile (`web` recommended)
+- PowerShell 7 or Windows PowerShell 5.1 (5.1 is used automatically as fallback)
+
+## Configuration
+
+Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
 
 ```yaml
 - id: dsh-notify-win
   config:
-    doneTitle: 'DeepSeek Harness · 任务完成'
-    doneBody: '任务已完成，可以查看结果。'
-    questionTitle: 'DeepSeek Harness · 需要你确认'
-    questionBody: '有操作需要你批准或拒绝。'
-    askTitle: 'DeepSeek Harness · 有问题等你回答'
-    askBody: '助手向你提了一个问题，请切换到 DeepSeek Harness 查看。'
-    dedupMs: 1500   # suppression window between two notifications
-    showProject: true  # prefix body with the project label (git remote origin repo name, else cwd folder name)
+    doneTitle: 'DeepSeek Harness · Task complete'
+    doneBody: 'Your task has finished.'
+    questionTitle: 'DeepSeek Harness · Action needed'
+    questionBody: 'An approval or decision is waiting.'
+    askTitle: 'DeepSeek Harness · Question for you'
+    askBody: 'The assistant asked you something.'
+    dedupMs: 1500              # suppress duplicate notifications within this window
+    showProject: true          # prefix body with project label
 ```
+
+To disable:
+
+```yaml
+- id: dsh-notify-win
+  disabled: true
+```
+
+Restart after install/disable changes (web profile HMR is disabled by default).
 
 ## How it works
 
 | Concern | Implementation |
 | --- | --- |
-| Trigger "done" | `agent/status` event with `status: 'idle'` (root agents only; subagents are skipped via `delegationDepth`) |
-| Trigger "question" | `approval/request` waterfall (fires + calls `next()`), plus `tools/execute` for `ask_user_question` (fires + calls `next()`) |
-| Toast | `lib/notify.ps1` → WinRT `Windows.UI.Notifications` (native toast) under the system-registered PowerShell identity (unregistered AUMIDs are silently dropped by Win10/11), with the **DeepSeek Harness logo** as the app icon (`appLogoOverride`; theme-matched light/dark PNG generated from the official favicon), falls back to a `NotifyIcon` balloon |
-| Taskbar flash | `lib/notify.ps1` → `EnumWindows` finds the top-level window whose title starts with `DeepSeek Harness`, then `FlashWindowEx` (`FLASHW_ALL \| FLASHW_TIMERNOFG` = 15, flashes until the window is focused) |
-| Execution | `ctx.subprocess.spawn(powershell -NoProfile -NonInteractive -WindowStyle Hidden -File notify.ps1 ...)`, fire-and-forget; PowerShell resolved like the official `dsh-pwsh-local` (pwsh 7 install → PATH → Windows PowerShell 5.1) |
+| Trigger "done" | `agent/status` event with `status: 'idle'` (root agents only) |
+| Trigger "question" | `approval/request` waterfall + `tools/execute` for `ask_user_question` |
+| Toast | WinRT `Windows.UI.Notifications` with hero banner, falls back to `NotifyIcon` balloon |
+| Taskbar flash | `EnumWindows` + `FlashWindowEx` (`FLASHW_ALL \| FLASHW_TIMERNOFG`) |
+| Execution | Fire-and-forget `powershell -File notify.ps1` subprocess |
 
-The plugin registers no service, no tool, and no settings namespace — it is a
-plain consumer row, safe in any profile, no isolate realm needed.
+The plugin registers no service, tool, or settings namespace — a plain consumer row, safe in any profile.
 
 ## Known limitations
 
-- **Flash color**: `FlashWindowEx` uses the system's own warm-pulse highlight;
-  a custom pure-orange flash is not possible through the public Windows API.
-- **Flash only when the window is in the background**: Windows never flashes
-  the taskbar button of the window you are currently looking at — that is
-  system behavior, and it is exactly the point (drawing you back to a window
-  you are not watching).
-- **Toast identity**: the toast is shown under the system-registered
-  "Windows PowerShell" identity (a registered AUMID is required for reliable
-  display; a dedicated branded AUMID registration is future work). The toast
-  **icon** is the DeepSeek Harness logo via `appLogoOverride`; the app name
-  in the notification center still reads "Windows PowerShell".
-- **Cancel = done**: stopping a running turn also lands the agent in `idle`,
-  so a cancelled task still triggers the "done" notification (the status
-  event does not carry the stop cause).
-- **Restart required** after install/disable changes on the web profile
-  (web HMR is disabled in the shipped template).
-- Notifications are deduplicated **per session** (project): each project's
-  completion always surfaces, while a single session's rapid idle/approval
-  events within the `dedupMs` window (default 1500 ms) collapse into one.
-- There is no flashing for an Edge/msedge window you are currently looking at
-  (Windows never flashes a foreground window); when the dsh tab is in the
-  background the taskbar button of the hosting Edge window is flashed.
+- `FlashWindowEx` uses the system's warm-pulse highlight; custom colors are not possible.
+- Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background.
+- Cancelling a running turn also goes `idle`, so a cancelled task still triggers the "done" toast.
+- Notifications are deduplicated per session within `dedupMs` (default 1500 ms).
 
 ## Development
 
@@ -161,30 +128,29 @@ plain consumer row, safe in any profile, no isolate realm needed.
 npm run check     # syntax check
 npm test          # logic smoke test (mocked ctx)
 
-# Standalone notification script test (shows a real toast + taskbar flash):
+# Show a real toast + taskbar flash:
 powershell -NoProfile -File lib/notify.ps1 -Kind done -Title "test" -Body "test"
-
-# End-to-end load test (boots a headless profile with the plugin via overlay):
-dsh --profile headless --patch test/headless-overlay.yml "reply ok"
 ```
 
 ## Project layout
 
 ```
 dsh-notify-win/
-├── .github/workflows/ci.yml   # CI: node check + smoke test, ps1 parse
 ├── lib/
-│   ├── index.js               # Host half: event listeners -> subprocess spawn
-│   └── notify.ps1             # Toast + taskbar flash implementation
+│   ├── index.js       # Host half: event listeners -> subprocess spawn
+│   └── notify.ps1     # Toast + taskbar flash implementation
 ├── test/
-│   ├── smoke.mjs              # Plugin logic smoke test (mocked ctx)
-│   └── headless-overlay.yml   # Test overlay for end-to-end boot
-├── cordis.patch.yml           # DSH bundle patch: inserts the plugin row
-├── package.json               # dsh.bundle declaration + npm metadata
-├── README.md / README.zh.md   # English / 中文 documentation
-├── CHANGELOG.md
-└── LICENSE
+│   ├── smoke.mjs      # Plugin logic smoke test
+│   └── headless-overlay.yml
+├── cordis.patch.yml   # DSH bundle patch
+├── package.json       # dsh.bundle declaration
+├── README.md
+└── README.zh.md
 ```
+
+## Links
+
+- 🌐 Landing page: https://Andyqwe44.github.io/dsh-notify-win/
 
 ## License
 

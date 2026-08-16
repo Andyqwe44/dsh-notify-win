@@ -1,103 +1,85 @@
 # dsh-notify-win
 
-DeepSeek Harness (DSH) 的 Windows 宿主插件：当发生以下情况时，在**右下角弹出
-原生 Windows toast 通知**（VSCode Copilot 同款样式），并让**任务栏里的
-DeepSeek Harness 图标闪烁**（系统暖色脉冲，`FlashWindowEx`）：
+> DeepSeek Harness（DSH）Windows 通知插件：任务完成或需要你回答时，弹出原生 toast 并闪烁任务栏图标。
 
-- **任务完成** —— harness 检测到模型 API 返回结束、且没有工具调用继续对话
-  轮次（根 agent 进入 `idle`）；
-- **需要你回答** —— 有审批/决策请求在等待，或助手向你直接提问
-  （`ask_user_question`）。
+[English](README.md) | 中文
 
-触发源是 harness 自身的生命周期，**不是模型工具调用**，因此不涉及 DSH 的
-模型审批；唯一涉及的权限是操作系统层面的（Windows 是否允许 harness 进程
-弹出通知）。
+![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
+![license](https://img.shields.io/badge/license-MIT-green)
+![version](https://img.shields.io/badge/version-0.1.1-blue)
 
-## 环境要求
+## ✨ 功能
 
-- Windows 10/11，任意 profile 的 DeepSeek Harness（推荐 `web`）。
-- PowerShell 7 或 Windows PowerShell 5.1（两者皆可；5.1 会自动作为兜底探测）。
+- 🔔 **原生 Windows toast**（右下角，Win10/11 系统样式）
+- 💡 **任务栏闪烁**（`FlashWindowEx`），DSH 在后台时提醒你切回
+- ✅ **任务完成**时触发（根 agent 进入 `idle`）
+- ❓ **需要你回答**时触发（审批 / `ask_user_question`）
+- 🖼️ toast 顶部显示 DeepSeek Harness hero 大图（自动适配浅色/深色主题）
+- 🚀 即发即忘：不注册服务、不经过模型审批、不占用 settings 命名空间
 
-## 安装
-
-本包是标准的 DSH **bundle 插件**：自带 `cordis.patch.yml`，成为 profile
-依赖后即自动注册进组合树。
-
-### 1. 前置：pnpm 可用
-
-`dsh plugin` 会转发给 `pnpm`。若 `pnpm` 未安装：
+## 🚀 一行安装
 
 ```powershell
-# 方式 A：管理员 PowerShell（安装官方 shim）
-corepack enable
-
-# 方式 B：无管理员权限——在 PATH 目录放一个用户级 shim
-Set-Content -Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\pnpm.cmd" -Value "@echo off`r`ncorepack pnpm %*`r`n"
-corepack pnpm --version   # 首次运行会下载 pnpm；确认能打印版本号
-```
-
-### 2. 安装（官方命令）
-
-```powershell
-# 直接从 GitHub 安装（无需先发布 npm）：
-dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
-
-# 若 github: 失败（网络受限），改用 SSH 形式（需已配置 SSH 密钥）：
-dsh plugin --profile web add git+ssh://git@github.com/Andyqwe44/dsh-notify-win.git
-
-# npm 发布后，普通形式同样可用：
 dsh plugin --profile web add dsh-notify-win
 ```
 
-（`dsh plugin` 会在 profile 目录里执行 `pnpm add`，并把任何声明了
-`dsh.bundle` 的依赖自动加入 profile 的 bundle 层栈。）
+> 需要 `pnpm` 在 PATH 中（没有就先 `corepack enable`）。详见 [安装](#安装)。
 
-### 3. 验证
+## 安装
 
-```powershell
-dsh --profile web --dump-config   # 找到：# == dsh-notify-win / - id: dsh-notify-win
-```
+1. **前置：pnpm**
 
-### 4. 重启并测试
+   ```powershell
+   corepack enable
+   ```
 
-**重启 harness**（`dsh web`）——插件默认启用，且因存在于 profile 组合里，
-重启后依然保持启用。之后随便完成一个任务：第一条通知还会**自动完成品牌
-身份注册**（开始菜单快捷方式 + AppUserModelID，一次性）。若第一条 toast
-的标题仍显示 `DeepSeekHarness` 且没有图标，重启一次资源管理器
-（`Stop-Process -Name explorer -Force; Start-Process explorer`）或注销重登，
-刷新通知身份缓存即可。
+   没有管理员权限时，在 PATH 目录放一个用户级 shim：
 
-### 手工兜底（无 pnpm）
+   ```powershell
+   Set-Content -Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\pnpm.cmd" -Value "@echo off`r`ncorepack pnpm %*`r`n"
+   corepack pnpm --version
+   ```
 
-```powershell
-git clone https://github.com/Andyqwe44/dsh-notify-win.git
+2. **安装插件**
 
-# 把包 junction 到 profile 的 node_modules：
-New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-notify-win" -Target "D:\path\to\dsh-notify-win"
+   ```powershell
+   # 从 npm 安装（推荐）
+   dsh plugin --profile web add dsh-notify-win
 
-# 在 "$env:USERPROFILE\.dsh\profiles\web\package.json" 注册：
-#   "dependencies": { "dsh-notify-win": "github:Andyqwe44/dsh-notify-win" },
-#   "dsh": { "profile": { "bundles": [ ..., "dsh-notify-win" ] } }
-```
+   # 或从 GitHub 直接安装：
+   dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
-## 启用 / 禁用（即开关）
+   # 若 github: 失败（网络受限），改用 SSH：
+   dsh plugin --profile web add git+ssh://git@github.com/Andyqwe44/dsh-notify-win.git
+   ```
 
-加载/禁用开关就是插件行上的标准 `disabled` 字段——编辑
-`$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`：
+3. **验证**
 
-```yaml
-# 禁用：
-- id: dsh-notify-win
-  disabled: true
+   ```powershell
+   dsh --profile web --dump-config   # 找到：# == dsh-notify-win / - id: dsh-notify-win
+   ```
 
-# 重新启用（删掉该覆盖，或改为 false）：
-- id: dsh-notify-win
-  disabled: false
-```
+4. **重启并测试**
 
-重启后生效（web profile 的 HMR 在出厂模板里是关闭的）。
+   ```powershell
+   dsh web
+   ```
 
-## 自定义文案
+   随便完成一个任务即可。第一条通知会自动完成品牌身份注册（开始菜单快捷方式 + AppUserModelID，一次性）。若 toast 标题仍显示 `DeepSeekHarness` 且没有图标，重启一次资源管理器：
+
+   ```powershell
+   Stop-Process -Name explorer -Force; Start-Process explorer
+   ```
+
+## 环境要求
+
+- Windows 10/11
+- DeepSeek Harness，任意 profile（推荐 `web`）
+- PowerShell 7 或 Windows PowerShell 5.1（5.1 会自动作为兜底）
+
+## 配置
+
+编辑 `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`：
 
 ```yaml
 - id: dsh-notify-win
@@ -108,39 +90,37 @@ New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\d
     questionBody: '有操作需要你批准或拒绝。'
     askTitle: 'DeepSeek Harness · 有问题等你回答'
     askBody: '助手向你提了一个问题，请切换到 DeepSeek Harness 查看。'
-    dedupMs: 1500   # 两次通知之间的去重窗口（毫秒）
-    showProject: true  # 正文前缀显示项目标识（git remote origin 仓库名，否则 cwd 目录名）
+    dedupMs: 1500              # 两次通知之间的去重窗口（毫秒）
+    showProject: true          # 正文前缀显示项目标识
 ```
+
+禁用插件：
+
+```yaml
+- id: dsh-notify-win
+  disabled: true
+```
+
+安装/禁用后需重启（web profile 默认关闭 HMR）。
 
 ## 工作原理
 
 | 环节 | 实现 |
 | --- | --- |
-| 「完成」触发 | `agent/status` 事件 `status: 'idle'`（仅根 agent；子代理通过 `delegationDepth` 跳过） |
-| 「待回答」触发 | `approval/request` 瀑布（触发通知 + 调用 `next()` 放行），以及 `ask_user_question` 的 `tools/execute`（同样触发 + `next()`） |
-| 弹窗 | `lib/notify.ps1` → WinRT `Windows.UI.Notifications`（原生 toast），使用系统已注册的 PowerShell 身份（未注册的 AUMID 会被 Win10/11 静默丢弃），失败回退 `NotifyIcon` 气泡 |
-| 任务栏闪烁 | `lib/notify.ps1` → `EnumWindows` 找到标题以 `DeepSeek Harness` 开头的顶层窗口，再调 `FlashWindowEx`（`FLASHW_ALL \| FLASHW_TIMERNOFG` = 15，一直闪到窗口获得焦点） |
-| 执行方式 | `ctx.subprocess.spawn(powershell -NoProfile -NonInteractive -WindowStyle Hidden -File notify.ps1 ...)`，即发即忘；PowerShell 按官方 `dsh-pwsh-local` 的策略解析（pwsh 7 安装目录 → PATH → Windows PowerShell 5.1） |
+| 「完成」触发 | `agent/status` 事件 `status: 'idle'`（仅根 agent） |
+| 「待回答」触发 | `approval/request` 瀑布 + `ask_user_question` 的 `tools/execute` |
+| 弹窗 | WinRT `Windows.UI.Notifications`，顶部 hero 大图，失败回退 `NotifyIcon` 气泡 |
+| 任务栏闪烁 | `EnumWindows` + `FlashWindowEx`（`FLASHW_ALL \| FLASHW_TIMERNOFG`） |
+| 执行方式 | 即发即忘的 `powershell -File notify.ps1` 子进程 |
 
-本插件不注册任何服务、工具或 settings 命名空间——它只是一个普通消费者行，
-放在任何 profile 里都安全，无需 isolate realm。
+插件不注册服务、工具或 settings 命名空间——普通消费者行，任何 profile 都安全。
 
 ## 已知限制
 
-- **闪烁颜色**：`FlashWindowEx` 用的是系统自带的暖色脉冲高亮；通过公开
-  Windows API 无法自定义成纯橙色。
-- **只有窗口在后台时才会闪烁**：Windows 永远不会为「你正在看的窗口」闪烁
-  任务栏——这是系统行为，也正是它的意义（把你拉回没在看的窗口）。
-- **Toast 身份**：通知以系统已注册的「Windows PowerShell」身份显示（可靠
-  显示需要已注册的 AUMID；注册专属品牌 AUMID 留作后续工作）。
-- **取消也算完成**：停止正在运行的一轮同样会让 agent 进入 `idle`，因此取消
-  任务也会触发「完成」通知（status 事件不携带停止原因）。
-- **改动需重启**：在 web profile 上安装/禁用后需重启（出厂模板禁用了
-  web HMR）。
-- 通知按**会话（项目）**去重：每个项目完成都会各弹一条，同一会话在
-  `dedupMs`（默认 1500ms）内连续出现的 idle/审批事件才合并为一条。
-- 处于前台的 Edge/msedge 窗口不会闪烁（Windows 不闪前台窗口）；dsh Tab
-  在后台时，所归属的 Edge 窗口任务栏按钮会闪烁。
+- `FlashWindowEx` 使用系统自带暖色脉冲，无法自定义颜色。
+- Windows 不会闪烁前台窗口——只有 DSH 在后台时任务栏按钮才会闪。
+- 取消正在运行的一轮同样会进入 `idle`，所以取消任务也会触发「完成」通知。
+- 通知按会话在 `dedupMs`（默认 1500ms）内去重。
 
 ## 开发
 
@@ -150,27 +130,27 @@ npm test          # 逻辑冒烟测试（mock ctx）
 
 # 单独测试通知脚本（会真的弹出 toast + 闪烁任务栏）：
 powershell -NoProfile -File lib/notify.ps1 -Kind done -Title "test" -Body "test"
-
-# 端到端加载测试（用 overlay 启动一个 headless profile 并加载插件）：
-dsh --profile headless --patch test/headless-overlay.yml "reply ok"
 ```
 
 ## 项目结构
 
 ```
 dsh-notify-win/
-├── .github/workflows/ci.yml   # CI：node 检查 + 冒烟测试、ps1 解析
 ├── lib/
-│   ├── index.js               # 宿主半：事件监听 → subprocess 拉起 PowerShell
-│   └── notify.ps1             # toast + 任务栏闪烁实现
+│   ├── index.js       # 宿主半：事件监听 → 拉起子进程
+│   └── notify.ps1     # toast + 任务栏闪烁实现
 ├── test/
-│   ├── smoke.mjs              # 插件逻辑冒烟测试（mock ctx）
-│   └── headless-overlay.yml   # 端到端启动用的测试 overlay
-├── cordis.patch.yml           # DSH bundle 补丁：插入插件行
-├── package.json               # dsh.bundle 声明 + npm 元数据
-├── CHANGELOG.md
-└── LICENSE
+│   ├── smoke.mjs      # 插件逻辑冒烟测试
+│   └── headless-overlay.yml
+├── cordis.patch.yml   # DSH bundle 补丁
+├── package.json       # dsh.bundle 声明
+├── README.md
+└── README.zh.md
 ```
+
+## 链接
+
+- 🌐 落地页：https://Andyqwe44.github.io/dsh-notify-win/
 
 ## License
 

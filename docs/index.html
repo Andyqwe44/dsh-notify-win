@@ -1,0 +1,145 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>dsh-notify-win · DeepSeek Harness Windows 通知插件</title>
+  <meta name="description" content="DeepSeek Harness 任务完成或需要你回答时，弹出 Win10/11 原生 toast 并闪烁任务栏图标。" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="dsh-notify-win · DeepSeek Harness Windows 通知插件" />
+  <meta property="og:description" content="任务完成或需要你回答时，弹出 Win10/11 原生 toast 并闪烁任务栏图标。" />
+  <meta property="og:url" content="https://Andyqwe44.github.io/dsh-notify-win/" />
+  <meta property="og:image" content="https://Andyqwe44.github.io/dsh-notify-win/assets/dsh-hero-light.png" />
+  <meta property="og:site_name" content="dsh-notify-win" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="dsh-notify-win · DeepSeek Harness Windows 通知插件" />
+  <meta name="twitter:description" content="任务完成或需要你回答时，弹出 Win10/11 原生 toast 并闪烁任务栏图标。" />
+  <meta name="twitter:image" content="https://Andyqwe44.github.io/dsh-notify-win/assets/dsh-hero-light.png" />
+
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #171a21;
+      --text: #e6e8ee;
+      --muted: #9aa0ae;
+      --accent: #4f8cff;
+      --border: #262b36;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 80px; }
+    .hero { text-align: center; padding: 24px 0 32px; }
+    .hero img { width: 140px; height: 140px; border-radius: 24px; margin-bottom: 16px; }
+    h1 { font-size: 2rem; letter-spacing: -0.02em; }
+    .tagline { color: var(--muted); margin-top: 8px; font-size: 1.05rem; }
+    .badges { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .badges img { height: 22px; border-radius: 6px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 22px;
+      margin-top: 20px;
+    }
+    h2 { font-size: 1.25rem; margin-bottom: 12px; }
+    code {
+      background: #0b0e14;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 0.9em;
+    }
+    pre {
+      background: #0b0e14;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 10px 0 0;
+    }
+    pre code { border: none; padding: 0; background: none; }
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .feature { background: #1c2029; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .feature strong { display: block; margin-bottom: 4px; color: var(--accent); }
+    .btn {
+      display: inline-block;
+      margin-top: 12px;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+    .muted { color: var(--muted); }
+    .footer { text-align: center; margin-top: 40px; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <img src="assets/dsh-logo-light.png" alt="dsh-notify-win logo" />
+      <h1>dsh-notify-win</h1>
+      <p class="tagline">DeepSeek Harness 任务完成或需要你回答时，弹出 Win10/11 原生 toast 并闪烁任务栏图标。</p>
+      <div class="badges">
+        <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4" alt="Windows 10/11" />
+        <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT" />
+        <img src="https://img.shields.io/badge/version-0.1.1-blue" alt="v0.1.1" />
+      </div>
+    </section>
+
+    <div class="card">
+      <h2>🚀 一行安装</h2>
+      <pre><code>dsh plugin --profile web add dsh-notify-win</code></pre>
+    </div>
+
+    <div class="card">
+      <h2>✨ 功能</h2>
+      <div class="features">
+        <div class="feature"><strong>原生 Toast</strong>右下角系统通知，VSCode Copilot 同款体验</div>
+        <div class="feature"><strong>任务栏闪烁</strong>DSH 在后台时提醒你切回窗口</div>
+        <div class="feature"><strong>任务完成触发</strong>根 agent 进入 idle 时自动通知</div>
+        <div class="feature"><strong>需要回答触发</strong>审批 / ask_user_question 时提醒</div>
+        <div class="feature"><strong>主题适配</strong>浅色 / 深色主题自动切换 hero 大图</div>
+        <div class="feature"><strong>零侵入</strong>不注册服务、不经过模型审批</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📦 安装详情</h2>
+      <pre><code># 前置：pnpm
+corepack enable
+
+# 安装
+dsh plugin --profile web add dsh-notify-win
+
+# 验证
+dsh --profile web --dump-config
+
+# 重启
+dsh web</code></pre>
+    </div>
+
+    <div class="card" style="text-align: center;">
+      <h2>开始使用</h2>
+      <p class="muted">安装并重启后，随便完成一个任务即可看到效果。</p>
+      <a class="btn" href="https://github.com/Andyqwe44/dsh-notify-win" target="_blank" rel="noopener">GitHub 仓库</a>
+      <a class="btn" href="https://github.com/Andyqwe44/dsh-notify-win/issues" target="_blank" rel="noopener" style="background:#2b3240;">反馈问题</a>
+    </div>
+
+    <div class="footer">
+      <p>MIT License · dsh-notify-win</p>
+    </div>
+  </div>
+</body>
+</html>

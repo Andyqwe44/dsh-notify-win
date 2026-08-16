@@ -152,13 +152,13 @@ try {
   } catch {
     $lightTheme = $true
   }
-  $logoFile = Join-Path $PSScriptRoot $(if ($lightTheme) { 'dsh-logo-light.png' } else { 'dsh-logo-dark.png' })
-  $logoUri = ''
-  if (Test-Path $logoFile) {
-    $logoUri = 'file:///' + ($logoFile -replace '\\', '/')
+  $heroFile = Join-Path $PSScriptRoot $(if ($lightTheme) { 'dsh-hero-light.png' } else { 'dsh-hero-dark.png' })
+  $heroUri = ''
+  if (Test-Path $heroFile) {
+    $heroUri = 'file:///' + ($heroFile -replace '\\', '/')
   }
   $xml = '<toast><visual><binding template="ToastGeneric">' +
-    $(if ($logoUri -ne '') { '<image placement="appLogoOverride" src="' + $logoUri + '"/>' } else { '' }) +
+    $(if ($heroUri -ne '') { '<image placement="hero" src="' + $heroUri + '"/>' } else { '' }) +
     '<text>' + $titleXml + '</text>' +
     '<text>' + $bodyXml + '</text>' +
     '</binding></visual></toast>'
