@@ -46,27 +46,38 @@ try {
 } catch {
   # Registry write failed; the toast still falls back below.
 }
-if ($regProps.ShortcutRegistered -ne '1') {
+$lnkPath = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DeepSeek Harness.lnk'
+$icoPath = Join-Path $PSScriptRoot 'dsh-logo.ico'
+$helperPath = Join-Path $PSScriptRoot 'dsh-toast-question.exe'
+$shortcutTargetOk = $false
+if (Test-Path $lnkPath) {
+  try {
+    $wsProbe = New-Object -ComObject WScript.Shell
+    $scProbe = $wsProbe.CreateShortcut($lnkPath)
+    $shortcutTargetOk = ($scProbe.TargetPath -eq $helperPath)
+  } catch {}
+}
+if ($regProps.ShortcutRegistered -ne '1' -or -not $shortcutTargetOk) {
   $shortcutOk = $false
-  $lnkPath = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DeepSeek Harness.lnk'
-  $icoPath = Join-Path $PSScriptRoot 'dsh-logo.ico'
   try {
     $hasAumid = $false
     if (Test-Path $lnkPath) {
       $bytes = [System.IO.File]::ReadAllBytes($lnkPath)
       $hasAumid = [System.Text.Encoding]::Unicode.GetString($bytes).Contains($brandAumid)
     }
-    if (-not $hasAumid -and (Test-Path $icoPath)) {
+    if ((Test-Path $icoPath) -and (Test-Path $helperPath)) {
       # Recreate the shortcut and set the AppUserModelID extended property
       # through the property system (the ShellLink COM property store does
       # not persist it). Retry: the Start Menu file can be transiently
-      # locked by Explorer's indexer.
+      # locked by Explorer's indexer. The target must be the toast question
+      # helper so foreground toast activation reaches the running .NET helper.
       $ws = New-Object -ComObject WScript.Shell
       $sc = $ws.CreateShortcut($lnkPath)
-      $sc.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-      $sc.Arguments = '-NoProfile -NonInteractive -WindowStyle Hidden -Command "exit"'
+      $sc.TargetPath = $helperPath
+      $sc.Arguments = ''
       $sc.IconLocation = "$icoPath,0"
       $sc.Description = 'DeepSeek Harness notifications'
+      $sc.WindowStyle = 7
       $sc.Save()
       Add-Type @'
 using System;
@@ -132,7 +143,7 @@ public static class DshToastIdentity {
           Start-Sleep -Milliseconds 400
         }
       }
-    } elseif ($hasAumid) {
+    } elseif ($hasAumid -and $shortcutTargetOk) {
       $shortcutOk = $true
     }
   } catch {
