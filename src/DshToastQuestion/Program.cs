@@ -231,7 +231,7 @@ static class Program
         var options = q.Options ?? new List<OptionData>();
 
         var sb = new StringBuilder();
-        sb.Append("<toast><visual><binding template=\"ToastGeneric\"><text>")
+        sb.Append("<toast useButtonStyle=\"true\"><visual><binding template=\"ToastGeneric\"><text>")
           .Append(XmlEscape(toastTitle))
           .Append("</text><text>")
           .Append(XmlEscape(questionText));
@@ -264,8 +264,8 @@ static class Program
         {
             // Multi-select: user types numbers like "1,2" into the input.
             sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"输入序号，如 1,2\"/>");
-            sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\"/>");
             sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
+            sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\" hint-buttonStyle=\"Success\"/>");
         }
         else
         {
@@ -286,8 +286,8 @@ static class Program
             }
             sb.Append("</input>");
             sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选）\"/>");
-            sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\"/>");
             sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
+            sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\" hint-buttonStyle=\"Success\"/>");
         }
 
         sb.Append("</actions></toast>");
