@@ -271,7 +271,7 @@ static class Program
             sb.Append("\n\n单选：请输入序号，或直接输入自定义答案");
         }
 
-
+        sb.Append("</text></binding></visual><actions>");
 
         // Both single-select and multi-select use a plain text input. This
         // avoids the native selection dropdown entirely, so the toast never
