@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -134,18 +135,7 @@ static class Program
                 }
 
                 var q = questions[current];
-                string selectedLabel = "";
                 string custom = "";
-
-                if (e.UserInput.ContainsKey("select"))
-                {
-                    string selectedId = e.UserInput["select"]?.ToString() ?? "";
-                    if (int.TryParse(selectedId, out int idx) &&
-                        q.Options != null && idx >= 1 && idx <= q.Options.Count)
-                    {
-                        selectedLabel = q.Options[idx - 1].Label;
-                    }
-                }
 
                 if (e.UserInput.ContainsKey("custom"))
                 {
@@ -177,24 +167,28 @@ static class Program
                 }
                 else
                 {
-                    // Custom text overrides the dropdown selection.
-                    if (!string.IsNullOrWhiteSpace(custom))
+                    // Single-select: a numeric input selects the matching
+                    // option; any other non-empty text is a custom answer.
+                    string trimmed = custom.Trim();
+                    if (trimmed.Length == 0) return; // no answer
+
+                    if (int.TryParse(trimmed, out int idx) &&
+                        q.Options != null && idx >= 1 && idx <= q.Options.Count)
+                    {
+                        answers.Add(new AnswerItem
+                        {
+                            Id = q.Id ?? "",
+                            Selected = new List<string> { q.Options[idx - 1].Label },
+                            Custom = null
+                        });
+                    }
+                    else
                     {
                         answers.Add(new AnswerItem
                         {
                             Id = q.Id ?? "",
                             Selected = new List<string>(),
-                            Custom = custom.Trim()
-                        });
-                    }
-                    else
-                    {
-                        if (selectedLabel.Length == 0) return; // no answer
-                        answers.Add(new AnswerItem
-                        {
-                            Id = q.Id ?? "",
-                            Selected = new List<string> { selectedLabel },
-                            Custom = null
+                            Custom = trimmed
                         });
                     }
                 }
@@ -231,12 +225,13 @@ static class Program
         var options = q.Options ?? new List<OptionData>();
 
         var sb = new StringBuilder();
-        // scenario="alarm" keeps the interactive toast pre-expanded and on
-        // screen while the user is choosing from the dropdown. Without it the
-        // toast collapses as soon as the pointer leaves the toast body and
-        // moves over the dropdown popup. Audio is silenced so it behaves like
-        // a normal question toast instead of an alarm.
-        sb.Append("<toast useButtonStyle=\"true\" scenario=\"alarm\"><visual><binding template=\"ToastGeneric\"><text>")
+        // Default toast scenario: it auto-closes after the normal toast
+        // lifetime when the user is not interacting. We deliberately avoid a
+        // selection dropdown here: its popup is a separate window and makes
+        // the toast collapse while the pointer is over the dropdown list.
+        // Options are shown as a numbered list and answered through the text
+        // input, which stays inside the toast and does not steal focus.
+        sb.Append("<toast useButtonStyle=\"true\"><visual><binding template=\"ToastGeneric\"><text>")
           .Append(XmlEscape(toastTitle))
           .Append("</text><text>")
           .Append(XmlEscape(questionText));
@@ -246,15 +241,24 @@ static class Program
             sb.Append("\n").Append(XmlEscape(q.Detail));
         }
 
-        if (q.IsMultiSelect && options.Count > 0)
+        if (options.Count > 0)
         {
-            // Multi-select still needs a numbered list because the user types
-            // numbers into the input. Single-select options live in the dropdown.
+            // Show all options as a numbered list in the toast body. The user
+            // types the number (or a custom answer) into the text input below,
+            // so no dropdown popup is needed.
             sb.Append("\n");
             for (int i = 0; i < options.Count; i++)
             {
                 string label = options[i].Label;
-                sb.Append("\n").Append(i + 1).Append(". ").Append(XmlEscape(label));
+                string desc = options[i].Description ?? "";
+                if (desc.Length > 0)
+                {
+                    sb.Append("\n").Append(i + 1).Append(". ").Append(XmlEscape(label)).Append(" - ").Append(XmlEscape(desc));
+                }
+                else
+                {
+                    sb.Append("\n").Append(i + 1).Append(". ").Append(XmlEscape(label));
+                }
             }
         }
 
@@ -262,44 +266,21 @@ static class Program
         {
             sb.Append("\n\n可多选：请在输入框输入多个序号，如 1,2");
         }
-
-        sb.Append("</text></binding></visual><audio silent=\"true\"/><actions>");
-
-        if (q.IsMultiSelect)
-        {
-            // Multi-select: user types numbers like "1,2" into the input.
-            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"输入序号，如 1,2\"/>");
-            sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
-            sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\" hint-buttonStyle=\"Success\"/>");
-        }
         else
         {
-            // Single-select: use a compact dropdown so many/long option labels
-            // do not crowd the button row. A text input is always available for
-            // a custom answer; if it is filled, it overrides the dropdown.
-            int maxOptions = Math.Min(options.Count, 5);
-            sb.Append("<input id=\"select\" type=\"selection\" title=\"请选择一项\">");
-            for (int i = 0; i < maxOptions; i++)
-            {
-                string desc = options[i].Description ?? "";
-                string content = desc.Length > 0 ? $"{options[i].Label} - {desc}" : options[i].Label;
-                sb.Append("<selection id=\"")
-                  .Append(i + 1)
-                  .Append("\" content=\"")
-                  .Append(XmlEscape(content))
-                  .Append("\"/>");
-            }
-            // Add an explicit way to switch to the custom input without
-            // submitting. Only when the 5-item selection limit allows it.
-            if (options.Count < 5)
-            {
-                sb.Append("<selection id=\"__custom__\" content=\"自定义答案\"/>");
-            }
-            sb.Append("</input>");
-            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选）\"/>");
-            sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
-            sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\" hint-buttonStyle=\"Success\"/>");
+            sb.Append("\n\n单选：请输入序号，或直接输入自定义答案");
         }
+
+
+
+        // Both single-select and multi-select use a plain text input. This
+        // avoids the native selection dropdown entirely, so the toast never
+        // collapses while the user is reading/typing an answer.
+        sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"");
+        sb.Append(q.IsMultiSelect ? "输入序号，如 1,2" : "输入序号或自定义答案，如 1");
+        sb.Append("\"/>");
+        sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
+        sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\" hint-buttonStyle=\"Success\"/>");
 
         sb.Append("</actions></toast>");
 
@@ -308,7 +289,83 @@ static class Program
         var toast = new ToastNotification(doc);
         toast.Tag = "dsh-q-" + Guid.NewGuid().ToString("N");
         toast.Activated += handler;
+        // If the user ignores the question toast and Windows dismisses it by
+        // timeout, fall back to a taskbar flash so the pending question is not
+        // missed. Manual dismissal (user closed it) does not flash.
+        toast.Dismissed += (s, e) =>
+        {
+            if (e.Reason == ToastDismissalReason.TimedOut)
+            {
+                FlashTaskbar();
+            }
+        };
         ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
+    }
+
+    // ---------------------------------------------------------------------
+    // Taskbar flash fallback for ignored question toasts. Mirrors the
+    // FLASHW_TRAY behaviour used by notify.ps1 (stable across virtual
+    // desktops) and only flashes the DSH PWA taskbar button.
+    // ---------------------------------------------------------------------
+    delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int GetWindowText(IntPtr hWnd, StringBuilder sb, int max);
+
+    [DllImport("user32.dll")]
+    static extern bool FlashWindowEx(ref FLASHWINFO info);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct FLASHWINFO
+    {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
+    }
+
+    static void FlashTaskbar()
+    {
+        try
+        {
+            IntPtr found = IntPtr.Zero;
+            EnumWindows((h, l) =>
+            {
+                if (!IsWindowVisible(h)) return true;
+                var sb = new StringBuilder(512);
+                GetWindowText(h, sb, sb.Capacity);
+                string title = sb.ToString();
+                if (title.Contains("— DeepSeek Harness", StringComparison.OrdinalIgnoreCase) ||
+                    title.EndsWith("— DeepSeek Harness", StringComparison.OrdinalIgnoreCase))
+                {
+                    found = h;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+
+            if (found == IntPtr.Zero) return;
+            var info = new FLASHWINFO
+            {
+                cbSize = (uint)Marshal.SizeOf<FLASHWINFO>(),
+                hwnd = found,
+                dwFlags = 14, // FLASHW_TRAY(2) | FLASHW_TIMERNOFG(12)
+                uCount = 0,
+                dwTimeout = 0
+            };
+            FlashWindowEx(ref info);
+        }
+        catch
+        {
+            // Best-effort: flashing must never break the toast flow.
+        }
     }
 
     static async Task<bool> SubmitAsync(string session, List<AnswerItem> answers)
