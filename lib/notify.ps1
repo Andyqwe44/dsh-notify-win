@@ -368,7 +368,7 @@ public static class DshFlash {
     $info = New-Object DshFlash+FLASHWINFO
     $info.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type][DshFlash+FLASHWINFO])
     $info.hwnd = $script:found
-    $info.dwFlags = 15   # FLASHW_ALL(3) | FLASHW_TIMERNOFG(12)
+    $info.dwFlags = 14   # FLASHW_TRAY(2) | FLASHW_TIMERNOFG(12) — taskbar button only
     $info.uCount = 0     # flash until the window comes to the foreground
     $info.dwTimeout = 0
     [void][DshFlash]::FlashWindowEx([ref]$info)
