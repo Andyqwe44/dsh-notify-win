@@ -2,7 +2,10 @@ param(
   [Parameter(Mandatory = $true)][string]$Kind,
   [Parameter(Mandatory = $true)][string]$Title,
   [Parameter(Mandatory = $true)][string]$Body,
-  [Parameter(Mandatory = $false)][string]$Launch = ''
+  [Parameter(Mandatory = $false)][string]$Launch = '',
+  [Parameter(Mandatory = $false)][string]$SessionId = '',
+  [Parameter(Mandatory = $false)][string]$QuestionId = '',
+  [Parameter(Mandatory = $false)][string]$QuestionsJson = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -162,8 +165,8 @@ try {
   $focusVbs = Join-Path $PSScriptRoot 'focus-dsh.vbs'
   if (Test-Path $focusVbs) {
     # wscript runs the VBS hidden, which launches PowerShell hidden too — no
-    # console flash when the toast is clicked.
-    $handler = "wscript.exe `"$focusVbs`""
+    # console flash when the toast is clicked. %1 is the invoked dsh-notify URI.
+    $handler = "wscript.exe `"$focusVbs`" `"%1`""
     Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
   } elseif (Test-Path $focusScript) {
     $handler = "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -File `"$focusScript`""
@@ -203,11 +206,40 @@ try {
     # needs to focus/launch the installed Edge PWA via the dsh-notify protocol.
     $launchAttr = ' launch="dsh-notify://focus" activationType="protocol"'
   }
+  $actionsXml = ''
+  if ($QuestionsJson -ne '' -and $SessionId -ne '' -and $QuestionId -ne '') {
+    try {
+      $questionsJson = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($QuestionsJson))
+      $questions = $questionsJson | ConvertFrom-Json
+      $question = $questions[0]
+      if ($null -ne $question) {
+        $xmlEsc = { param($s) return ([string]$s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;') }
+        $sb = New-Object System.Text.StringBuilder
+        [void]$sb.Append('<input id="custom" type="text" placeHolderContent="Custom answer"/>')
+        foreach ($option in $question.options) {
+          $labelXml = & $xmlEsc $option.label
+          $uri = 'dsh-notify://answer?session=' + [uri]::EscapeDataString($SessionId) +
+            '&qid=' + [uri]::EscapeDataString($QuestionId) +
+            '&option=' + [uri]::EscapeDataString([string]$option.label) + '&custom='
+          $uriXml = & $xmlEsc $uri
+          [void]$sb.Append('<action content="' + $labelXml + '" arguments="' + $uriXml + '" activationType="protocol"/>')
+        }
+        $submitUri = 'dsh-notify://answer?session=' + [uri]::EscapeDataString($SessionId) +
+          '&qid=' + [uri]::EscapeDataString($QuestionId) +
+          '&option=&custom={custom}'
+        $submitUriXml = & $xmlEsc $submitUri
+        [void]$sb.Append('<action content="Send" arguments="' + $submitUriXml + '" activationType="protocol"/>')
+        $actionsXml = '<actions>' + $sb.ToString() + '</actions>'
+      }
+    } catch {
+      $actionsXml = ''
+    }
+  }
   $xml = '<toast' + $launchAttr + '><visual><binding template="ToastGeneric">' +
     $(if ($heroUri -ne '') { '<image placement="hero" src="' + $heroUri + '"/>' } else { '' }) +
     '<text>' + $titleXml + '</text>' +
     '<text>' + $bodyXml + '</text>' +
-    '</binding></visual></toast>'
+    '</binding></visual>' + $actionsXml + '</toast>'
   $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
   $doc.LoadXml($xml)
   $toast = New-Object Windows.UI.Notifications.ToastNotification $doc

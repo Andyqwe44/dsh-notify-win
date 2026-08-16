@@ -153,6 +153,11 @@ dsh-notify-win/
 
 - 🌐 Landing page: https://Andyqwe44.github.io/dsh-notify-win/
 
+## Roadmap
+
+- **V1 (implemented)**: `ask_user_question` toasts show the question, option buttons, and a custom-answer input. Selecting an option or sending custom text focuses DSH and submits the answer to the waiting question.
+- **V2 (planned)**: answer entirely inside the toast without focusing/opening DSH — requires a registered background activation/COM activator so toast buttons can submit directly to the harness.
+
 ## License
 
 [MIT](LICENSE)

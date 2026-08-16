@@ -153,6 +153,11 @@ dsh-notify-win/
 
 - 🌐 落地页：https://Andyqwe44.github.io/dsh-notify-win/
 
+## Roadmap
+
+- **V1（已实现）**：`ask_user_question` 的 toast 显示问题、选项按钮和自定义回答输入框；选择选项或发送自定义内容后，聚焦 DSH 并提交给正在等待的问题。
+- **V2（计划中）**：完全在 toast 内回答，不聚焦/打开 DSH——需要注册后台激活 / COM activator，让 toast 按钮直接提交给 harness。
+
 ## License
 
 [MIT](LICENSE)

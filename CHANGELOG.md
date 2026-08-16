@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Client bundle (`lib/client.js`) declared via `dsh.client` + `exports["./client"]`.
 - Host HTTP endpoint `/dsh-notify/session` serves the pending session id to the
   browser-side client (consumed on first read).
+- **V1 question toasts**: `ask_user_question` notifications now include the
+  question, option buttons, and a custom-answer input. Selecting an option or
+  sending custom text forwards the answer to the host and submits it to the
+  waiting question after focusing DSH.
 
 ### Changed
 
