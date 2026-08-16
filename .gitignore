@@ -10,3 +10,5 @@ Thumbs.db
 .vscode/
 coverage/
 dist/
+src/**/bin/
+src/**/obj/
