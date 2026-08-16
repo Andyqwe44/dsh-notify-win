@@ -231,7 +231,12 @@ static class Program
         var options = q.Options ?? new List<OptionData>();
 
         var sb = new StringBuilder();
-        sb.Append("<toast useButtonStyle=\"true\"><visual><binding template=\"ToastGeneric\"><text>")
+        // scenario="alarm" keeps the interactive toast pre-expanded and on
+        // screen while the user is choosing from the dropdown. Without it the
+        // toast collapses as soon as the pointer leaves the toast body and
+        // moves over the dropdown popup. Audio is silenced so it behaves like
+        // a normal question toast instead of an alarm.
+        sb.Append("<toast useButtonStyle=\"true\" scenario=\"alarm\"><visual><binding template=\"ToastGeneric\"><text>")
           .Append(XmlEscape(toastTitle))
           .Append("</text><text>")
           .Append(XmlEscape(questionText));
@@ -258,7 +263,7 @@ static class Program
             sb.Append("\n\n可多选：请在输入框输入多个序号，如 1,2");
         }
 
-        sb.Append("</text></binding></visual><actions>");
+        sb.Append("</text></binding></visual><audio silent=\"true\"/><actions>");
 
         if (q.IsMultiSelect)
         {
