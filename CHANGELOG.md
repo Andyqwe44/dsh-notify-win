@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DeepSeek Harness Edge PWA (detected via `Get-StartApps`).
 - `lib/focus-dsh.ps1` reuses an existing DeepSeek Harness window when present,
   and only launches a new PWA window when none is open.
+- `lib/focus-dsh.vbs` launches `focus-dsh.ps1` through `wscript` so no console
+  window flashes on toast click.
+- Client bundle re-checks `/dsh-notify/session` on window `focus`, so clicking a
+  toast works even when the PWA is already open (no page reload).
 - Notify subprocess output is ignored to avoid terminal noise / log spills.
 
 ## [0.1.0] - 2026-08-15

@@ -159,7 +159,13 @@ try {
     if ($pwa) { $pwaAumid = $pwa.AppID }
   } catch {}
   $focusScript = Join-Path $PSScriptRoot 'focus-dsh.ps1'
-  if (Test-Path $focusScript) {
+  $focusVbs = Join-Path $PSScriptRoot 'focus-dsh.vbs'
+  if (Test-Path $focusVbs) {
+    # wscript runs the VBS hidden, which launches PowerShell hidden too — no
+    # console flash when the toast is clicked.
+    $handler = "wscript.exe `"$focusVbs`""
+    Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
+  } elseif (Test-Path $focusScript) {
     $handler = "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -File `"$focusScript`""
     Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
   } elseif ($pwaAumid) {
