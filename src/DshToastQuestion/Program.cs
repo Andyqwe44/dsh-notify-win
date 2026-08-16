@@ -135,7 +135,18 @@ static class Program
                 }
 
                 var q = questions[current];
+                string selectedLabel = "";
                 string custom = "";
+
+                if (e.UserInput.ContainsKey("select"))
+                {
+                    string selectedId = e.UserInput["select"]?.ToString() ?? "";
+                    if (int.TryParse(selectedId, out int idx) &&
+                        q.Options != null && idx >= 1 && idx <= q.Options.Count)
+                    {
+                        selectedLabel = q.Options[idx - 1].Label;
+                    }
+                }
 
                 if (e.UserInput.ContainsKey("custom"))
                 {
@@ -167,28 +178,24 @@ static class Program
                 }
                 else
                 {
-                    // Single-select: a numeric input selects the matching
-                    // option; any other non-empty text is a custom answer.
-                    string trimmed = custom.Trim();
-                    if (trimmed.Length == 0) return; // no answer
-
-                    if (int.TryParse(trimmed, out int idx) &&
-                        q.Options != null && idx >= 1 && idx <= q.Options.Count)
-                    {
-                        answers.Add(new AnswerItem
-                        {
-                            Id = q.Id ?? "",
-                            Selected = new List<string> { q.Options[idx - 1].Label },
-                            Custom = null
-                        });
-                    }
-                    else
+                    // Custom text overrides the dropdown selection.
+                    if (!string.IsNullOrWhiteSpace(custom))
                     {
                         answers.Add(new AnswerItem
                         {
                             Id = q.Id ?? "",
                             Selected = new List<string>(),
-                            Custom = trimmed
+                            Custom = custom.Trim()
+                        });
+                    }
+                    else
+                    {
+                        if (selectedLabel.Length == 0) return; // no answer
+                        answers.Add(new AnswerItem
+                        {
+                            Id = q.Id ?? "",
+                            Selected = new List<string> { selectedLabel },
+                            Custom = null
                         });
                     }
                 }
@@ -225,13 +232,12 @@ static class Program
         var options = q.Options ?? new List<OptionData>();
 
         var sb = new StringBuilder();
-        // Default toast scenario: it auto-closes after the normal toast
-        // lifetime when the user is not interacting. We deliberately avoid a
-        // selection dropdown here: its popup is a separate window and makes
-        // the toast collapse while the pointer is over the dropdown list.
-        // Options are shown as a numbered list and answered through the text
-        // input, which stays inside the toast and does not steal focus.
-        sb.Append("<toast useButtonStyle=\"true\"><visual><binding template=\"ToastGeneric\"><text>")
+        // Default toast scenario (no useButtonStyle). The native selection
+        // dropdown is the only compact way to show all options; it may still
+        // collapse when the pointer moves onto the popup, but the timeout
+        // flash fallback (Dismissed -> FlashTaskbar) covers that case.
+        // Without useButtonStyle the Send button cannot use hint-buttonStyle.
+        sb.Append("<toast><visual><binding template=\"ToastGeneric\"><text>")
           .Append(XmlEscape(toastTitle))
           .Append("</text><text>")
           .Append(XmlEscape(questionText));
@@ -241,11 +247,10 @@ static class Program
             sb.Append("\n").Append(XmlEscape(q.Detail));
         }
 
-        if (options.Count > 0)
+        if (q.IsMultiSelect && options.Count > 0)
         {
-            // Show all options as a numbered list in the toast body. The user
-            // types the number (or a custom answer) into the text input below,
-            // so no dropdown popup is needed.
+            // Multi-select still needs a numbered list because the user types
+            // numbers into the input. Single-select uses the dropdown.
             sb.Append("\n");
             for (int i = 0; i < options.Count; i++)
             {
@@ -266,21 +271,40 @@ static class Program
         {
             sb.Append("\n\n可多选：请在输入框输入多个序号，如 1,2");
         }
-        else
-        {
-            sb.Append("\n\n单选：请输入序号，或直接输入自定义答案");
-        }
 
         sb.Append("</text></binding></visual><actions>");
 
-        // Both single-select and multi-select use a plain text input. This
-        // avoids the native selection dropdown entirely, so the toast never
-        // collapses while the user is reading/typing an answer.
-        sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"");
-        sb.Append(q.IsMultiSelect ? "输入序号，如 1,2" : "输入序号或自定义答案，如 1");
-        sb.Append("\"/>");
+        if (q.IsMultiSelect)
+        {
+            // Multi-select: user types numbers like "1,2" into the input.
+            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"输入序号，如 1,2\"/>");
+        }
+        else
+        {
+            // Single-select: use the native dropdown so all options are fully
+            // visible in the popup. The text input below is for a custom
+            // answer; if filled, it overrides the dropdown selection.
+            int maxOptions = Math.Min(options.Count, 5);
+            sb.Append("<input id=\"select\" type=\"selection\" title=\"请选择一项\">");
+            for (int i = 0; i < maxOptions; i++)
+            {
+                string desc = options[i].Description ?? "";
+                string content = desc.Length > 0 ? $"{options[i].Label} - {desc}" : options[i].Label;
+                sb.Append("<selection id=\"")
+                  .Append(i + 1)
+                  .Append("\" content=\"")
+                  .Append(XmlEscape(content))
+                  .Append("\"/>");
+            }
+            if (options.Count < 5)
+            {
+                sb.Append("<selection id=\"__custom__\" content=\"自定义答案\"/>");
+            }
+            sb.Append("</input>");
+            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选）\"/>");
+        }
         sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
-        sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\" hint-buttonStyle=\"Success\"/>");
+        sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\"/>");
 
         sb.Append("</actions></toast>");
 
