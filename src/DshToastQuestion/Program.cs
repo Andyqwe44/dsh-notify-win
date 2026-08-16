@@ -126,13 +126,21 @@ static class Program
                 var e = args as ToastActivatedEventArgs;
                 if (e == null) return;
 
+                if (string.Equals(e.Arguments, "cancel", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool ok = await SubmitCancelAsync(session);
+                    done.TrySetResult(ok);
+                    return;
+                }
+
                 var q = questions[current];
                 string selectedLabel = "";
                 string custom = "";
 
-                if (e.Arguments != null && e.Arguments.StartsWith("select:", StringComparison.OrdinalIgnoreCase))
+                if (e.UserInput.ContainsKey("select"))
                 {
-                    if (int.TryParse(e.Arguments.Substring("select:".Length), out int idx) &&
+                    string selectedId = e.UserInput["select"]?.ToString() ?? "";
+                    if (int.TryParse(selectedId, out int idx) &&
                         q.Options != null && idx >= 1 && idx <= q.Options.Count)
                     {
                         selectedLabel = q.Options[idx - 1].Label;
@@ -169,13 +177,26 @@ static class Program
                 }
                 else
                 {
-                    if (selectedLabel.Length == 0 && string.IsNullOrWhiteSpace(custom)) return; // no answer
-                    answers.Add(new AnswerItem
+                    // Custom text overrides the dropdown selection.
+                    if (!string.IsNullOrWhiteSpace(custom))
                     {
-                        Id = q.Id ?? "",
-                        Selected = selectedLabel.Length > 0 ? new List<string> { selectedLabel } : new List<string>(),
-                        Custom = string.IsNullOrWhiteSpace(custom) ? null : custom.Trim()
-                    });
+                        answers.Add(new AnswerItem
+                        {
+                            Id = q.Id ?? "",
+                            Selected = new List<string>(),
+                            Custom = custom.Trim()
+                        });
+                    }
+                    else
+                    {
+                        if (selectedLabel.Length == 0) return; // no answer
+                        answers.Add(new AnswerItem
+                        {
+                            Id = q.Id ?? "",
+                            Selected = new List<string> { selectedLabel },
+                            Custom = null
+                        });
+                    }
                 }
 
                 current++;
@@ -220,15 +241,15 @@ static class Program
             sb.Append("\n").Append(XmlEscape(q.Detail));
         }
 
-        if (options.Count > 0)
+        if (q.IsMultiSelect && options.Count > 0)
         {
+            // Multi-select still needs a numbered list because the user types
+            // numbers into the input. Single-select options live in the dropdown.
             sb.Append("\n");
             for (int i = 0; i < options.Count; i++)
             {
                 string label = options[i].Label;
-                string desc = options[i].Description ?? "";
-                string line = desc.Length > 0 ? $"{i + 1}. {label} - {desc}" : $"{i + 1}. {label}";
-                sb.Append("\n").Append(XmlEscape(line));
+                sb.Append("\n").Append(i + 1).Append(". ").Append(XmlEscape(label));
             }
         }
 
@@ -238,31 +259,35 @@ static class Program
         }
 
         sb.Append("</text></binding></visual><actions>");
-        sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"")
-          .Append(q.IsMultiSelect ? "输入序号，如 1,2" : "自定义答案（可选）")
-          .Append("\"/>");
 
         if (q.IsMultiSelect)
         {
-            // Multi-select: only Send; user types numbers into the input.
+            // Multi-select: user types numbers like "1,2" into the input.
+            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"输入序号，如 1,2\"/>");
             sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\"/>");
+            sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
         }
         else
         {
-            int maxButtons = Math.Min(options.Count, 5);
-            for (int i = 0; i < maxButtons; i++)
+            // Single-select: use a compact dropdown so many/long option labels
+            // do not crowd the button row. A text input is always available for
+            // a custom answer; if it is filled, it overrides the dropdown.
+            int maxOptions = Math.Min(options.Count, 5);
+            sb.Append("<input id=\"select\" type=\"selection\" title=\"请选择一项\">");
+            for (int i = 0; i < maxOptions; i++)
             {
-                sb.Append("<action content=\"")
+                string desc = options[i].Description ?? "";
+                string content = desc.Length > 0 ? $"{options[i].Label} - {desc}" : options[i].Label;
+                sb.Append("<selection id=\"")
                   .Append(i + 1)
-                  .Append("\" arguments=\"select:")
-                  .Append(i + 1)
-                  .Append("\" activationType=\"foreground\"/>");
+                  .Append("\" content=\"")
+                  .Append(XmlEscape(content))
+                  .Append("\"/>");
             }
-            // Keep one slot for Send when there is room (<=4 options).
-            if (options.Count < 5)
-            {
-                sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\"/>");
-            }
+            sb.Append("</input>");
+            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选）\"/>");
+            sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\"/>");
+            sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
         }
 
         sb.Append("</actions></toast>");
@@ -285,6 +310,23 @@ static class Program
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             });
+            using var http = new HttpClient();
+            http.Timeout = TimeSpan.FromSeconds(5);
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var resp = await http.PostAsync("http://127.0.0.1:3080/dsh-notify/answer", content);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    static async Task<bool> SubmitCancelAsync(string session)
+    {
+        try
+        {
+            string json = JsonSerializer.Serialize(new { sessionId = session, cancel = true });
             using var http = new HttpClient();
             http.Timeout = TimeSpan.FromSeconds(5);
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
