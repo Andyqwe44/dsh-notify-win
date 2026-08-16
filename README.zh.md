@@ -6,12 +6,13 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.1.1-blue)
+![version](https://img.shields.io/badge/version-0.2.0-blue)
 
 ## ✨ 功能
 
 - 🔔 **原生 Windows toast**（右下角，Win10/11 系统样式）
 - 💡 **任务栏闪烁**（`FlashWindowEx`），DSH 在后台时提醒你切回
+- 🖱️ **点击跳转** — 点击 toast 自动打开 DSH 并切换到对应会话
 - ✅ **任务完成**时触发（根 agent 进入 `idle`）
 - ❓ **需要你回答**时触发（审批 / `ask_user_question`）
 - 🖼️ toast 顶部显示 DeepSeek Harness hero 大图（自动适配浅色/深色主题）

@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory = $true)][string]$Kind,
   [Parameter(Mandatory = $true)][string]$Title,
-  [Parameter(Mandatory = $true)][string]$Body
+  [Parameter(Mandatory = $true)][string]$Body,
+  [Parameter(Mandatory = $false)][string]$Launch = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -136,6 +137,35 @@ public static class DshToastIdentity {
   }
 }
 
+# ---------------------------------------------------------------------------
+# 0b. dsh-notify:// protocol: clicking a toast focuses/launches the installed
+#     DeepSeek Harness Edge PWA (the browser-side client then reads the
+#     pending session from the host HTTP route). Idempotent, best-effort.
+# ---------------------------------------------------------------------------
+$protoName = 'dsh-notify'
+$protoRoot = "HKCU:\Software\Classes\$protoName"
+try {
+  if (-not (Test-Path $protoRoot)) { New-Item -Path $protoRoot -Force | Out-Null }
+  Set-ItemProperty -Path $protoRoot -Name '(default)' -Value 'URL:dsh-notify Protocol' -ErrorAction Stop
+  Set-ItemProperty -Path $protoRoot -Name 'URL Protocol' -Value '' -ErrorAction Stop
+  $protoCmd = "$protoRoot\shell\open\command"
+  New-Item -Path $protoCmd -Force | Out-Null
+  # Find the Edge-installed DSH PWA (skip the toast identity AUMID we register above).
+  $pwaAumid = $null
+  try {
+    $pwa = Get-StartApps | Where-Object {
+      $_.Name -eq 'DeepSeek Harness' -and $_.AppID -like '*!App' -and $_.AppID -ne $brandAumid
+    } | Select-Object -First 1
+    if ($pwa) { $pwaAumid = $pwa.AppID }
+  } catch {}
+  if ($pwaAumid) {
+    $handler = "cmd.exe /c start `"`" shell:AppsFolder\$pwaAumid"
+    Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
+  }
+} catch {
+  # Protocol registration failed; clicking the toast simply dismisses it.
+}
+
 try {
   [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
   [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
@@ -157,7 +187,13 @@ try {
   if (Test-Path $heroFile) {
     $heroUri = 'file:///' + ($heroFile -replace '\\', '/')
   }
-  $xml = '<toast><visual><binding template="ToastGeneric">' +
+  $launchAttr = ''
+  if ($Launch -ne '') {
+    # The session id is stored host-side and served over HTTP; the toast only
+    # needs to focus/launch the installed Edge PWA via the dsh-notify protocol.
+    $launchAttr = ' launch="dsh-notify://focus" activationType="protocol"'
+  }
+  $xml = '<toast' + $launchAttr + '><visual><binding template="ToastGeneric">' +
     $(if ($heroUri -ne '') { '<image placement="hero" src="' + $heroUri + '"/>' } else { '' }) +
     '<text>' + $titleXml + '</text>' +
     '<text>' + $bodyXml + '</text>' +

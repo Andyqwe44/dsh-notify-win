@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-16
+
+### Added
+
+- **Click-to-focus**: clicking a toast focuses/launches the installed Edge PWA
+  (or a normal browser tab) and switches DSH to the session that produced the
+  notification.
+- Client bundle (`lib/client.js`) declared via `dsh.client` + `exports["./client"]`.
+- Host HTTP endpoint `/dsh-notify/session` serves the pending session id to the
+  browser-side client (consumed on first read).
+
+### Changed
+
+- `notify.ps1` accepts an optional `-Launch` argument and sets
+  `activationType="protocol"` when present.
+- `notify.ps1` registers the `dsh-notify://` protocol pointing at the installed
+  DeepSeek Harness Edge PWA (detected via `Get-StartApps`).
+- Notify subprocess output is ignored to avoid terminal noise / log spills.
+
 ## [0.1.0] - 2026-08-15
 
 ### Added

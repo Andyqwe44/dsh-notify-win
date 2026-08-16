@@ -1,11 +1,12 @@
 {
   "name": "dsh-notify-win",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Native Windows toast + taskbar flash for DeepSeek Harness when a task finishes or your input is needed.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -46,6 +47,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "sessions"
+      ],
+      "platform": "web",
+      "immediately": true
     }
   }
 }

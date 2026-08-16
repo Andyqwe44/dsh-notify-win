@@ -6,12 +6,13 @@ English | [中文](README.zh.md)
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.1.1-blue)
+![version](https://img.shields.io/badge/version-0.2.0-blue)
 
 ## ✨ Features
 
 - 🔔 **Native Windows toast** (bottom-right, Win10/11 system style)
 - 💡 **Taskbar flash** (`FlashWindowEx`) when DSH is in the background
+- 🖱️ **Click-to-focus** — clicking a toast opens DSH and switches to the corresponding session
 - ✅ Triggers when a **task finishes** (root agent goes `idle`)
 - ❓ Triggers when **your input is needed** (approval / `ask_user_question`)
 - 🖼️ Hero banner with the DeepSeek Harness logo (light/dark theme aware)
