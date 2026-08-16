@@ -12,6 +12,9 @@ $ErrorActionPreference = 'Continue'
 $flashOk = $false
 $toastShown = $false
 $balloonShown = $false
+$toastAumid = ''
+$flashTitle = ''
+$flashHwnd = [IntPtr]::Zero
 
 # ---------------------------------------------------------------------------
 # 1. Native Windows 11 toast (WinRT). A monotonic per-process sequence id keeps
@@ -247,25 +250,33 @@ try {
   $doc.LoadXml($xml)
   $toast = New-Object Windows.UI.Notifications.ToastNotification $doc
   $toast.Tag = 'dsh-notify-' + $seq
-  # Branded AppUserModelID (registered in section 0 above). Unregistered
-  # AUMIDs are silently dropped, so fall back to the system-registered
-  # PowerShell identity if the branded one cannot be used.
-  $notifier = $null
+  # The self-registered DeepSeekHarness AUMID can be silently dropped by
+  # Windows even though Show() does not throw. Prefer the real installed Edge
+  # PWA AUMID (DeepSeek Harness app), which is known to display; fall back to
+  # the system-registered PowerShell identity.
+  $pwaAumid = $null
   try {
-    $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($brandAumid)
-    $notifier.Show($toast)
-  } catch {
-    $notifier = $null
+    $pwaAumid = (Get-StartApps | Where-Object {
+      $_.Name -eq 'DeepSeek Harness' -and $_.AppID -like '*!App' -and $_.AppID -ne $brandAumid
+    } | Select-Object -First 1).AppID
+  } catch {}
+  $notifier = $null
+  $toastAumid = ''
+  $toastCandidates = @()
+  if ($pwaAumid) { $toastCandidates += ,@($pwaAumid, 'pwa') }
+  $toastCandidates += ,@('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe', 'powershell')
+  foreach ($candidate in $toastCandidates) {
+    $appId = $candidate[0]
+    try {
+      $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId)
+      $notifier.Show($toast)
+      $toastAumid = $appId
+      break
+    } catch {
+      $notifier = $null
+    }
   }
-  if ($null -eq $notifier) {
-    # Use the system-registered PowerShell identity: toasts with an
-    # unregistered AppUserModelID are silently dropped on Win10/11, while this
-    # identity (a Start-Menu registered shortcut) reliably displays.
-    $toastAppId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
-    $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($toastAppId)
-    $notifier.Show($toast)
-  }
-  $toastShown = $true
+  $toastShown = $null -ne $notifier
 } catch {
   $toastShown = $false
 }
@@ -314,24 +325,35 @@ public static class DshFlash {
 }
 '@
   $script:found = [IntPtr]::Zero
+  $script:foundTitle = ''
   $callback = [DshFlash+EnumProc]{
     param($h, $l)
     if ([DshFlash]::IsWindowVisible($h)) {
       $sb = New-Object System.Text.StringBuilder 512
       [void][DshFlash]::GetWindowText($h, $sb, $sb.Capacity)
       $title = $sb.ToString()
-      # An Edge/msedge window's title is the ACTIVE tab, which may be another
-      # project while the dsh tab sits in the same window. Match the dsh tab
-      # by title OR the harness port/name so multi-tab setups still flash.
-      if ($title -like 'DeepSeek*' -or $title -like '*3080* - DeepSeek*' -or $title -like '*:3080*' -or $title -like '*DeepSeek Harness*') {
+      # Prefer the actual DSH PWA window: its title ends with
+      # "— DeepSeek Harness". Other Edge windows can contain the repo
+      # description "DeepSeek Harness" and must not steal the flash.
+      if ($title -match '—\s*DeepSeek Harness\s*$' -or $title -like '*— DeepSeek Harness*') {
         $script:found = $h
+        $script:foundTitle = $title
         return $false
+      }
+      # Fallback broad match (old behaviour): first visible window whose title
+      # mentions the harness name/port.
+      if ($script:found -eq [IntPtr]::Zero -and
+          ($title -like 'DeepSeek*' -or $title -like '*3080* - DeepSeek*' -or $title -like '*:3080*' -or $title -like '*DeepSeek Harness*')) {
+        $script:found = $h
+        $script:foundTitle = $title
       }
     }
     return $true
   }
   [void][DshFlash]::EnumWindows($callback, [IntPtr]::Zero)
   if ($script:found -ne [IntPtr]::Zero) {
+    $flashHwnd = $script:found
+    $flashTitle = $script:foundTitle
     $info = New-Object DshFlash+FLASHWINFO
     $info.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type][DshFlash+FLASHWINFO])
     $info.hwnd = $script:found
@@ -345,4 +367,5 @@ public static class DshFlash {
   $flashOk = $false
 }
 
-Write-Output ("notify:kind={0};toast={1};balloon={2};flash={3}" -f $Kind, $toastShown, $balloonShown, $flashOk)
+$debugLine = "notify:kind={0};toast={1};balloon={2};flash={3};aumid={4};flashTitle={5};flashHwnd={6}" -f $Kind, $toastShown, $balloonShown, $flashOk, $toastAumid, $flashTitle, $flashHwnd
+Write-Output $debugLine
