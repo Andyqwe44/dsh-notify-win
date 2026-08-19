@@ -1,4 +1,4 @@
-﻿name: Deploy GitHub Pages
+name: Deploy GitHub Pages
 
 on:
   push:
@@ -23,8 +23,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # Deploy both docs/ (HTML + screenshots) and lib/ (hero/logo assets
+      // referenced by index.html via ../lib/ paths).
+      - name: Prepare pages artifact
+        run: |
+          rm -rf _page
+          mkdir -p _page
+          cp -r docs/* _page/
+          cp -r lib/*.png lib/*.ico lib/*.svg _page/ 2>/dev/null || true
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: _page
       - id: deployment
         uses: actions/deploy-pages@v4
