@@ -5,7 +5,8 @@ param(
   [Parameter(Mandatory = $false)][string]$Launch = '',
   [Parameter(Mandatory = $false)][string]$SessionId = '',
   [Parameter(Mandatory = $false)][string]$QuestionId = '',
-  [Parameter(Mandatory = $false)][string]$QuestionsJson = ''
+  [Parameter(Mandatory = $false)][string]$QuestionsJson = '',
+  [Parameter(Mandatory = $false)][string]$Duration = 'short'
 )
 
 $ErrorActionPreference = 'Continue'
@@ -252,7 +253,7 @@ try {
       $actionsXml = ''
     }
   }
-  $xml = '<toast' + $launchAttr + '><visual><binding template="ToastGeneric">' +
+  $xml = '<toast' + $launchAttr + ' duration="' + $Duration + '"><visual><binding template="ToastGeneric">' +
     $(if ($heroUri -ne '') { '<image placement="hero" src="' + $heroUri + '"/>' } else { '' }) +
     '<text>' + $titleXml + '</text>' +
     '<text>' + $bodyXml + '</text>' +

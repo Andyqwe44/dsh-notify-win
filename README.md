@@ -118,6 +118,9 @@ Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
     askTitle: 'DeepSeek Harness · Question for you'
     askBody: 'The assistant asked you something.'
     dedupMs: 1500              # suppress duplicate notifications within this window
+    questionToastDuration: 'short'  # 'short' (~5s) or 'long' (~25s) for ask_user_question toasts
+    doneToastDuration: 'short'      # 'short' (~5s) or 'long' (~25s) for done/compact/approval toasts
+    noDotNetHint: '（如需从 toast 直接回答，请安装 .NET 10 Desktop Runtime）'  # appended when .NET is missing
     showProject: true          # prefix body with project label
 ```
 
@@ -152,7 +155,7 @@ The plugin registers no service, tool, or settings namespace — a plain consume
 - Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background.
 - Cancelling a running turn also goes `idle`, so a cancelled task still triggers the "done" toast.
 - Notifications are deduplicated per session within `dedupMs` (default 1500 ms).
-- Interactive question toasts require the .NET 10 Desktop Runtime on the machine.
+- Interactive question toasts require the .NET 10 Desktop Runtime on the machine. If it is missing, the plugin falls back to a plain PowerShell toast that still surfaces the question and appends a hint to install .NET.
 
 ## Development
 

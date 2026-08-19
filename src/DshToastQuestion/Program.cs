@@ -108,6 +108,15 @@ static class Program
         string title = GetArg(args, "--title");
         string body = GetArg(args, "--body");
         string questionsB64 = GetArg(args, "--questions");
+        string duration = GetArg(args, "--duration");
+
+        // Quick liveness probe: exit 0 if the .NET Desktop Runtime can load
+        // this assembly. The host plugin uses it to decide whether to spawn
+        // the interactive helper or fall back to a plain PowerShell toast.
+        if (string.Equals(GetArg(args, "--check"), "1", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
 
         var questions = ParseQuestions(questionsB64);
         if (questions == null || questions.Count == 0)
@@ -312,6 +321,9 @@ static class Program
         doc.LoadXml(sb.ToString());
         var toast = new ToastNotification(doc);
         toast.Tag = "dsh-q-" + Guid.NewGuid().ToString("N");
+        toast.Duration = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase)
+            ? ToastDuration.Long
+            : ToastDuration.Short;
         toast.Activated += handler;
         // If the user ignores the question toast and Windows dismisses it by
         // timeout, fall back to a taskbar flash so the pending question is not

@@ -118,6 +118,9 @@ dsh plugin --profile web add dsh-notify-win
     askTitle: 'DeepSeek Harness · 有问题等你回答'
     askBody: '助手向你提了一个问题，请切换到 DeepSeek Harness 查看。'
     dedupMs: 1500              # 两次通知之间的去重窗口（毫秒）
+    questionToastDuration: 'short'  # 'short'（约5秒）或 'long'（约25秒），用于 ask_user_question 交互 toast
+    doneToastDuration: 'short'      # 'short'（约5秒）或 'long'（约25秒），用于完成/压缩/审批 toast
+    noDotNetHint: '（如需从 toast 直接回答，请安装 .NET 10 Desktop Runtime）'  # .NET 缺失时追加到 toast 正文
     showProject: true          # 正文前缀显示项目标识
 ```
 
@@ -152,7 +155,7 @@ dsh plugin --profile web add dsh-notify-win
 - Windows 不会闪烁前台窗口——只有 DSH 在后台时任务栏按钮才会闪。
 - 取消正在运行的一轮同样会进入 `idle`，所以取消任务也会触发「完成」通知。
 - 通知按会话在 `dedupMs`（默认 1500ms）内去重。
-- 交互式问题 toast 需要机器上安装 .NET 10 Desktop Runtime。
+- 交互式问题 toast 需要机器上安装 .NET 10 Desktop Runtime。如果未安装，插件会回退为普通 PowerShell toast，仍然会提醒有问题待处理，并在正文末尾追加安装 .NET 的提示。
 
 ## 开发
 
