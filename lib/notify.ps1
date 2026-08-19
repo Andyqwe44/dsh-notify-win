@@ -194,6 +194,33 @@ try {
   # Protocol registration failed; clicking the toast simply dismisses it.
 }
 
+# If the DSH window is already focused the user is already looking at DSH —
+# skip the toast entirely. The UI will surface any pending question or
+# approval directly, so a toast would only be noise.
+$dshFocused = $false
+try {
+  Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class DshFocusCheck {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr IntPtr, StringBuilder sb, int max);
+}
+'@
+  $fg = [DshFocusCheck]::GetForegroundWindow()
+  if ($fg -ne [IntPtr]::Zero) {
+    $sb = New-Object System.Text.StringBuilder 512
+    [void][DshFocusCheck]::GetWindowText($fg, $sb, $sb.Capacity)
+    if ($sb.ToString() -like '*DeepSeek Harness*') { $dshFocused = $true }
+  }
+} catch { }
+
+if ($dshFocused) {
+  Write-Output "notify:kind=$Kind;skipped;reason=dsh-focused"
+  exit 0
+}
+
 try {
   [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
   [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null

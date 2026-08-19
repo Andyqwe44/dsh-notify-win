@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Data.Xml.Dom;
 using Windows.Foundation;
@@ -70,6 +71,14 @@ static class Program
     }
 
     const string Aumid = "DeepSeekHarness";
+
+    // Taskbar flash control. When a question toast times out we start a slow
+    // re-pulse (every ~3 s) so the DSH taskbar button stays gently highlighted
+    // without the rapid continuous blinking that FLASHW_TIMERNOFG would cause.
+    // _flashGeneration invalidates stale timers when the user moves on to the
+    // next question; _flashEnabled is set false when the user responds.
+    static volatile bool _flashEnabled = false;
+    static int _flashGeneration = 0;
 
     static string GetArg(string[] args, string name)
     {
@@ -139,6 +148,7 @@ static class Program
                 if (string.Equals(e.Arguments, "cancel", StringComparison.OrdinalIgnoreCase))
                 {
                     bool ok = await SubmitCancelAsync(session);
+                    _flashEnabled = false;
                     done.TrySetResult(ok);
                     return;
                 }
@@ -217,11 +227,13 @@ static class Program
                 else
                 {
                     bool ok = await SubmitAsync(session, answers);
+                    _flashEnabled = false;
                     done.TrySetResult(ok);
                 }
             }
             catch
             {
+                _flashEnabled = false;
                 done.TrySetResult(false);
             }
         }
@@ -231,11 +243,16 @@ static class Program
         // Keep the process alive until all questions are answered or 5 minutes
         // pass (the host also enforces a 5-minute grace period).
         await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromMinutes(5)));
+        _flashEnabled = false;
         return 0;
     }
 
     static void ShowQuestion(QuestionData q, string fallbackTitle, string fallbackBody, TypedEventHandler<ToastNotification, object> handler)
     {
+        // Invalidate any flash timer from a previous question and stop it.
+        _flashGeneration++;
+        _flashEnabled = false;
+
         string toastTitle = string.IsNullOrEmpty(q.Header) ? fallbackTitle : q.Header!;
         string questionText = string.IsNullOrEmpty(q.Question) ? fallbackBody : q.Question!;
         var options = q.Options ?? new List<OptionData>();
@@ -328,11 +345,27 @@ static class Program
         // If the user ignores the question toast and Windows dismisses it by
         // timeout, fall back to a taskbar flash so the pending question is not
         // missed. Manual dismissal (user closed it) does not flash.
+        // The flash is a single warm pulse followed by a slow re-pulse (~3 s)
+        // so the taskbar stays gently highlighted without rapid blinking.
+        int gen = _flashGeneration;
         toast.Dismissed += (s, e) =>
         {
-            if (e.Reason == ToastDismissalReason.TimedOut)
+            if (e.Reason == ToastDismissalReason.TimedOut && gen == _flashGeneration)
             {
+                _flashEnabled = true;
                 FlashTaskbar();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        while (_flashEnabled)
+                        {
+                            await Task.Delay(3000);
+                            if (_flashEnabled) FlashTaskbar();
+                        }
+                    }
+                    catch (OperationCanceledException) { }
+                });
             }
         };
         ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
@@ -392,8 +425,8 @@ static class Program
             {
                 cbSize = (uint)Marshal.SizeOf<FLASHWINFO>(),
                 hwnd = found,
-                dwFlags = 14, // FLASHW_TRAY(2) | FLASHW_TIMERNOFG(12)
-                uCount = 0,
+                dwFlags = 2,  // FLASHW_TRAY only — single warm pulse, not continuous blinking
+                uCount = 1,
                 dwTimeout = 0
             };
             FlashWindowEx(ref info);
