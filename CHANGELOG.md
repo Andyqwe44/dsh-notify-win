@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-20
+
+### Added
+
+- **Post-action confirmation toasts**: after the user clicks "Send" (or "取消"),
+  the question toast is dismissed by Windows, then a small follow-up toast
+  confirms the outcome — "✓ 已发送" when DSH receives the answer, "已取消" for
+  cancellation, "✗ 发送失败，请重试" on network/error failure. The confirmation
+  only appears after `SubmitAsync` waits for the DSH host HTTP response, so the
+  user gets a real round-trip signal, not a fake one.
+
 ## [0.2.0] - 2026-08-16
 
 ### Added
