@@ -130,6 +130,8 @@ static class Program
                 if (string.Equals(e.Arguments, "cancel", StringComparison.OrdinalIgnoreCase))
                 {
                     bool ok = await SubmitCancelAsync(session);
+                    if (ok) ShowCancelledToast();
+                    else ShowErrorToast();
                     done.TrySetResult(ok);
                     return;
                 }
@@ -168,7 +170,11 @@ static class Program
                             }
                         }
                     }
-                    if (selected.Count == 0 && string.IsNullOrWhiteSpace(custom)) return; // no answer
+                    if (selected.Count == 0 && string.IsNullOrWhiteSpace(custom))
+                    {
+                        ShowToast("请选择答案", "dsh-none");
+                        return;
+                    }
                     answers.Add(new AnswerItem
                     {
                         Id = q.Id ?? "",
@@ -190,7 +196,11 @@ static class Program
                     }
                     else
                     {
-                        if (selectedLabel.Length == 0) return; // no answer
+                        if (selectedLabel.Length == 0)
+                        {
+                            ShowToast("请选择答案", "dsh-none");
+                            return;
+                        }
                         answers.Add(new AnswerItem
                         {
                             Id = q.Id ?? "",
@@ -208,11 +218,14 @@ static class Program
                 else
                 {
                     bool ok = await SubmitAsync(session, answers);
+                    if (ok) ShowSentToast();
+                    else ShowErrorToast();
                     done.TrySetResult(ok);
                 }
             }
             catch
             {
+                ShowErrorToast();
                 done.TrySetResult(false);
             }
         }
@@ -325,6 +338,34 @@ static class Program
         };
         ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
     }
+
+    // ---------------------------------------------------------------------
+    // Post-action confirmation toasts. After the user clicks "Send" (or
+    // "取消"), the original question toast is dismissed by Windows. These
+    // small follow-up toasts give the user a clear "✓ 已发送" / "已取消" /
+    // "✗ 发送失败" signal so they know their action landed — the DSH host
+    // has already received and processed the answer before the confirmation
+    // is shown (SubmitAsync waits for the HTTP response).
+    // ---------------------------------------------------------------------
+    static void ShowToast(string text, string tagPrefix)
+    {
+        try
+        {
+            var doc = new XmlDocument();
+            string xml = "<toast><visual><binding template=\"ToastGeneric\"><text>"
+              + XmlEscape(text)
+              + "</text></binding></visual></toast>";
+            doc.LoadXml(xml);
+            var toast = new ToastNotification(doc);
+            toast.Tag = tagPrefix + "-" + Guid.NewGuid().ToString("N");
+            ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
+        }
+        catch { }
+    }
+
+    static void ShowSentToast() => ShowToast("✓ 已发送", "dsh-sent");
+    static void ShowCancelledToast() => ShowToast("已取消", "dsh-cancel");
+    static void ShowErrorToast() => ShowToast("✗ 发送失败，请重试", "dsh-err");
 
     // ---------------------------------------------------------------------
     // Taskbar flash fallback for ignored question toasts. Mirrors the
