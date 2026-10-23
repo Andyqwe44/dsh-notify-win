@@ -38,6 +38,7 @@ English | [中文](README.zh.md)
 - 🗜️ Triggers when **context compaction finishes** — and alerts when it **fails** (`compaction/end` with `error`)
 - ❓ Triggers when **your input is needed** (approval / `ask_user_question`)
 - 📋 **Single-select question toast**: native dropdown with up to 5 options + “自定义答案” (custom answer) text input + Cancel / Send
+- ✅ **Post-action confirmation**: once the host accepts your answer a small “✓ 已发送” toast follows; cancelling shows “已取消”, a failed round trip shows “✗ 发送失败，请重试”, and submitting with nothing selected now says “请选择答案”
 - ⏰ **Timeout flash fallback**: if an interactive toast is ignored and dismissed by the system timeout, the taskbar flashes so the pending question is not missed
 - 🖼️ Hero banner with the DeepSeek Harness logo (light/dark theme aware)
 - 🚀 Fire-and-forget: no service, no model approval, no settings namespace
