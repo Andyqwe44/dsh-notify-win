@@ -15,6 +15,10 @@
 #                               dedupMs: 1500
 #                               questionToastDuration: short
 #                               doneToastDuration: short
+#                               helperEnabled: true
+#                               helperLog: ''
+#                               answerPendingTimeoutMs: 30000
+#                               answerSpeechTimeoutMs: 90000
 #                               notifyOnCancel: true
 #                               notifyOnError: true
 #                               errorTitle: ...

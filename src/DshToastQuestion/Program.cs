@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -9,15 +9,29 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Data.Xml.Dom;
-using Windows.Foundation;
 using Windows.UI.Notifications;
 
 namespace DshToastQuestion;
 
+/// <summary>
+/// Resident toast helper for dsh-notify-win.
+///
+/// The host plugin starts ONE of these when the plugin is applied and keeps it
+/// alive for the whole plugin lifetime. They speak newline-delimited JSON over
+/// the child's stdin/stdout:
+///
+///   host -> helper  { "op": "question" | "status" | "shutdown" | "ping", ... }
+///   helper -> host  { "ev": "ready" | "answer" | "cancel" | "pong", ... }
+///
+/// Lifecycle follows the host by construction: when DSH exits (the service
+/// terminates managed children, and the stdio pipes close) stdin reaches EOF
+/// and this process exits. The plugin also sends an explicit "shutdown" when it
+/// is disabled, so the helper disappears without leaving a stray process.
+/// </summary>
 static class Program
 {
     // ---------------------------------------------------------------------
-    // Data models (wire-compatible with ask_user_question arguments)
+    // Wire models (compatible with ask_user_question arguments)
     // ---------------------------------------------------------------------
     sealed class OptionData
     {
@@ -64,27 +78,81 @@ static class Program
         public string? Custom { get; set; }
     }
 
-    sealed class AnswerPayload
+    /// <summary>One inbound command. Unknown members are ignored on purpose.</summary>
+    sealed class InboundMessage
     {
-        public string SessionId { get; set; } = "";
-        public List<AnswerItem> Answers { get; set; } = new();
+        public string? Op { get; set; }
+        public string? Id { get; set; }
+        public string? SessionId { get; set; }
+        public string? Title { get; set; }
+        public string? Body { get; set; }
+        public List<QuestionData>? Questions { get; set; }
+        public string? Duration { get; set; }
+        public string? State { get; set; }
+        public string? Detail { get; set; }
+    }
+
+    /// <summary>Draft of one page: the dropdown choice and/or the typed answer.</summary>
+    sealed class PageDraft
+    {
+        /// <summary>1-based selection id; 0 means nothing picked.</summary>
+        public int Selected;
+        /// <summary>Custom text for single-select, or the numbers for multi-select.</summary>
+        public string Custom = "";
+    }
+
+    /// <summary>One interactive question batch owned by the host.</summary>
+    sealed class QuestionFlow
+    {
+        public string Id = "";
+        public string Session = "";
+        public string Title = "";
+        public string Body = "";
+        public string Duration = "short";
+        public List<QuestionData> Questions = new();
+        public PageDraft[] Drafts = Array.Empty<PageDraft>();
+        public int Current;
+        public int TagSeq;
+        public int ShowSeq;
+        public bool Submitted;
+        /// <summary>One-shot message rendered on the next page (for example a validation hint).</summary>
+        public string Hint = "";
+        /// <summary>Tag of the toast currently on screen; a fresh tag per page gets a real show animation.</summary>
+        public string QuestionTag = "";
+
+        public bool MultiPage => Questions.Count > 1;
+        public string StatusTag => "dsh-ans-" + TagSeq.ToString();
     }
 
     const string Aumid = "DeepSeekHarness";
+    const string QuestionGroup = "dsh-notify-q";
+    const string AnswerGroup = "dsh-notify-a";
 
-    // Where the toast answer is POSTed. The Web GUI picks its port at startup, so
-    // the host passes it via --url; 3080 is only a last-resort default for a
-    // manual run (it used to be hardcoded, which made every Send fail whenever
-    // the GUI was on another port).
-    static string AnswerUrl = "http://127.0.0.1:3080/dsh-notify/answer";
+    static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    static readonly object WriteLock = new();
+    static readonly object FlowsLock = new();
+    static readonly Dictionary<string, QuestionFlow> Flows = new();
+    static readonly HashSet<string> LiveToasts = new();
+    static readonly Queue<string> TrackOrder = new();
+
+    static StreamWriter? _out;
+    static string? _logPath;
+    static volatile bool _stopping;
+    static int _tagSeq;
 
     // Taskbar flash control. When a question toast times out we start a slow
     // re-pulse (every ~3 s) so the DSH taskbar button stays gently highlighted
     // without the rapid continuous blinking that FLASHW_TIMERNOFG would cause.
     // _flashGeneration invalidates stale timers when the user moves on to the
     // next question; _flashEnabled is set false when the user responds.
-    static volatile bool _flashEnabled = false;
-    static int _flashGeneration = 0;
+    static volatile bool _flashEnabled;
+    static int _flashGeneration;
 
     static string GetArg(string[] args, string name)
     {
@@ -96,40 +164,18 @@ static class Program
         return "";
     }
 
-    static List<QuestionData>? ParseQuestions(string base64)
+    static bool HasFlag(string[] args, string name)
     {
-        if (string.IsNullOrEmpty(base64)) return null;
-        try
+        foreach (var arg in args)
         {
-            string json = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
-            return JsonSerializer.Deserialize<List<QuestionData>>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            if (string.Equals(arg, name, StringComparison.OrdinalIgnoreCase)) return true;
         }
-        catch
-        {
-            return null;
-        }
+        return false;
     }
-
-    static string XmlEscape(string s) =>
-        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
     [STAThread]
     static async Task<int> Main(string[] args)
     {
-        string session = GetArg(args, "--session");
-        string title = GetArg(args, "--title");
-        string body = GetArg(args, "--body");
-        string questionsB64 = GetArg(args, "--questions");
-        string duration = GetArg(args, "--duration");
-        string url = GetArg(args, "--url");
-        if (!string.IsNullOrWhiteSpace(url))
-        {
-            AnswerUrl = url.TrimEnd('/') + "/dsh-notify/answer";
-        }
-
         // Quick liveness probe: exit 0 if the .NET Desktop Runtime can load
         // this assembly. The host plugin uses it to decide whether to spawn
         // the interactive helper or fall back to a plain PowerShell toast.
@@ -138,183 +184,173 @@ static class Program
             return 0;
         }
 
-        var questions = ParseQuestions(questionsB64);
-        if (questions == null || questions.Count == 0)
+        if (!HasFlag(args, "--serve"))
         {
-            await Task.Delay(300);
+            // No supported mode: fail fast instead of waiting on a stdin that
+            // nobody owns (an older host may still pass the one-shot flags).
+            await Task.Delay(200);
             return 2;
         }
 
-        var answers = new List<AnswerItem>();
-        int current = 0;
-        var done = new TaskCompletionSource<bool>();
+        _logPath = GetArg(args, "--log");
 
-        async void Handler(ToastNotification sender, object args)
+        // Tag names only need to be unique within one Windows toast source.
+        // Seeding from the pid keeps two helper instances (a hot-reload overlap)
+        // from replacing each other's question toast.
+        _tagSeq = Environment.ProcessId % 100000 * 10;
+
+        var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false))
         {
-            try
+            AutoFlush = true,
+        };
+        _out = stdout;
+
+        var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
+
+        Send(new Dictionary<string, object?>
+        {
+            ["ev"] = "ready",
+            ["pid"] = Environment.ProcessId,
+        });
+        Log("helper ready");
+
+        try
+        {
+            string? line;
+            while (!_stopping && (line = await stdin.ReadLineAsync()) != null)
             {
-                var e = args as ToastActivatedEventArgs;
-                if (e == null) return;
-
-                // A click on the toast BODY carries no action arguments. Windows
-                // dismisses the toast on that click, so re-open the same question
-                // instead of treating it as an empty submission.
-                if (string.IsNullOrEmpty(e.Arguments))
+                if (line.Length == 0) continue;
+                try
                 {
-                    await Task.Delay(700);
-                    ShowQuestion(questions[current], title, body, Handler, duration);
-                    return;
+                    Handle(line);
                 }
-
-                if (string.Equals(e.Arguments, "cancel", StringComparison.OrdinalIgnoreCase))
+                catch (Exception error)
                 {
-                    bool ok = await SubmitCancelAsync(session);
-                    _flashEnabled = false;
-                    if (ok) ShowCancelledToast();
-                    else ShowErrorToast();
-                    done.TrySetResult(ok);
-                    return;
+                    Log("command failed: " + error.Message);
                 }
-
-                var q = questions[current];
-                string selectedLabel = "";
-                string custom = "";
-
-                if (e.UserInput.ContainsKey("select"))
-                {
-                    string selectedId = e.UserInput["select"]?.ToString() ?? "";
-                    if (int.TryParse(selectedId, out int idx) &&
-                        q.Options != null && idx >= 1 && idx <= q.Options.Count)
-                    {
-                        selectedLabel = q.Options[idx - 1].Label;
-                    }
-                }
-
-                if (e.UserInput.ContainsKey("custom"))
-                {
-                    custom = e.UserInput["custom"]?.ToString() ?? "";
-                }
-
-                if (q.IsMultiSelect)
-                {
-                    // Multi-select: user types numbers like "1,2" into the input.
-                    var selected = new List<string>();
-                    if (!string.IsNullOrWhiteSpace(custom) && q.Options != null)
-                    {
-                        foreach (var part in custom.Split(new[] { ',', '，', ' ', ';', '；' }, StringSplitOptions.RemoveEmptyEntries))
-                        {
-                            if (int.TryParse(part.Trim(), out int idx) && idx >= 1 && idx <= q.Options.Count)
-                            {
-                                string label = q.Options[idx - 1].Label;
-                                if (!selected.Contains(label)) selected.Add(label);
-                            }
-                        }
-                    }
-                    if (selected.Count == 0 && string.IsNullOrWhiteSpace(custom))
-                    {
-                        // The toast is already gone: put the question back so the
-                        // user can still answer instead of being stranded with a
-                        // hint and a dead tool call.
-                        ShowToast("请选择答案", "dsh-none");
-                        await Task.Delay(1200);
-                        ShowQuestion(questions[current], title, body, Handler, duration);
-                        return;
-                    }
-                    answers.Add(new AnswerItem
-                    {
-                        Id = q.Id ?? "",
-                        Selected = selected,
-                        Custom = selected.Count == 0 && !string.IsNullOrWhiteSpace(custom) ? custom.Trim() : null
-                    });
-                }
-                else
-                {
-                    // Custom text overrides the dropdown selection.
-                    if (!string.IsNullOrWhiteSpace(custom))
-                    {
-                        answers.Add(new AnswerItem
-                        {
-                            Id = q.Id ?? "",
-                            Selected = new List<string>(),
-                            Custom = custom.Trim()
-                        });
-                    }
-                    else
-                    {
-                        if (selectedLabel.Length == 0)
-                        {
-                            ShowToast("请选择答案", "dsh-none");
-                            await Task.Delay(1200);
-                            ShowQuestion(questions[current], title, body, Handler, duration);
-                            return;
-                        }
-                        answers.Add(new AnswerItem
-                        {
-                            Id = q.Id ?? "",
-                            Selected = new List<string> { selectedLabel },
-                            Custom = null
-                        });
-                    }
-                }
-
-                current++;
-                if (current < questions.Count)
-                {
-                    ShowQuestion(questions[current], title, body, Handler, duration);
-                }
-                else
-                {
-                    bool ok = await SubmitAsync(session, answers);
-                    _flashEnabled = false;
-                    if (ok) ShowSentToast();
-                    else ShowErrorToast();
-                    done.TrySetResult(ok);
-                }
-            }
-            catch
-            {
-                _flashEnabled = false;
-                ShowErrorToast();
-                done.TrySetResult(false);
             }
         }
+        catch (Exception error)
+        {
+            Log("stdin failed: " + error.Message);
+        }
 
-        ShowQuestion(questions[0], title, body, Handler, duration);
-
-        // Keep the process alive until all questions are answered or 5 minutes
-        // pass (the host also enforces a 5-minute grace period).
-        await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromMinutes(5)));
-        _flashEnabled = false;
+        // The host is gone (EOF) or asked us to stop: clear the interactive
+        // toasts so a stale question cannot be clicked after its agent died.
+        CleanupToasts();
+        Log("helper exit");
         return 0;
     }
 
-    static void ShowQuestion(QuestionData q, string fallbackTitle, string fallbackBody, TypedEventHandler<ToastNotification, object> handler, string duration)
+    static void Handle(string line)
     {
-        // Invalidate any flash timer from a previous question and stop it.
-        _flashGeneration++;
-        _flashEnabled = false;
+        var message = JsonSerializer.Deserialize<InboundMessage>(line, JsonOptions);
+        if (message?.Op == null) return;
 
-        string toastTitle = string.IsNullOrEmpty(q.Header) ? fallbackTitle : q.Header!;
-        string questionText = string.IsNullOrEmpty(q.Question) ? fallbackBody : q.Question!;
+        switch (message.Op)
+        {
+            case "question":
+                StartFlow(message);
+                break;
+            case "status":
+                ApplyStatus(message);
+                break;
+            case "shutdown":
+                _stopping = true;
+                break;
+            case "ping":
+                Send(new Dictionary<string, object?> { ["ev"] = "pong" });
+                break;
+            default:
+                Log("unknown op: " + message.Op);
+                break;
+        }
+    }
+
+    static void StartFlow(InboundMessage message)
+    {
+        if (string.IsNullOrEmpty(message.Id)) return;
+        var questions = message.Questions;
+        if (questions == null || questions.Count == 0) return;
+
+        var flow = new QuestionFlow
+        {
+            Id = message.Id!,
+            Session = message.SessionId ?? "",
+            Title = message.Title ?? "",
+            Body = message.Body ?? "",
+            Duration = message.Duration ?? "short",
+            Questions = questions,
+            Drafts = questions.Select(_ => new PageDraft()).ToArray(),
+            TagSeq = Interlocked.Increment(ref _tagSeq),
+        };
+
+        lock (FlowsLock)
+        {
+            // Drop flows the host never confirmed long ago (a lost status must
+            // not grow this table for the life of the process).
+            foreach (var stale in Flows.Values.Where(item => item.TagSeq < flow.TagSeq - 64).ToArray())
+            {
+                Flows.Remove(stale.Id);
+            }
+            Flows[flow.Id] = flow;
+        }
+
+        ShowQuestion(flow);
+        Log("question shown: " + flow.Id);
+    }
+
+    /// <summary>Retire one flow once its outcome is known.</summary>
+    static void FinishFlow(QuestionFlow flow)
+    {
+        lock (FlowsLock) Flows.Remove(flow.Id);
+    }
+
+    // ---------------------------------------------------------------------
+    // Question rendering
+    // ---------------------------------------------------------------------
+    /// <summary>Render one page of the flow, preserving every page's draft.</summary>
+    static void ShowQuestion(QuestionFlow flow)
+    {
+        if (flow.Current < 0) flow.Current = 0;
+        if (flow.Current >= flow.Questions.Count) flow.Current = flow.Questions.Count - 1;
+        var page = flow.Current;
+        var q = flow.Questions[page];
+        var draft = flow.Drafts[page];
         var options = q.Options ?? new List<OptionData>();
 
+        // Invalidate any flash timer from a previous question and stop it.
+        Interlocked.Increment(ref _flashGeneration);
+        _flashEnabled = false;
+
+        var hint = flow.Hint;
+        flow.Hint = "";
+
         var sb = new StringBuilder();
-        // Default toast scenario (no useButtonStyle). The native selection
-        // dropdown is the only compact way to show all options; it may still
-        // collapse when the pointer moves onto the popup, but the timeout
-        // flash fallback (Dismissed -> FlashTaskbar) covers that case.
-        // Without useButtonStyle the Send button cannot use hint-buttonStyle.
-        // WinRT exposes no ToastNotification.Duration property: the display
-        // duration is a toast XML attribute (short ~5 s, long ~25 s). Only an
-        // explicit 'long' opts in, matching the documented config default.
-        string durationAttr = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase) ? "long" : "short";
-        // Badge-only, like every other kind: the app icon in the header is the
-        // only image, so the question toast stays compact next to the dropdown.
-        sb.Append("<toast duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\">")
-          .Append("<text>")
-          .Append(XmlEscape(toastTitle))
-          .Append("</text><text>")
-          .Append(XmlEscape(questionText));
+        // A multi-page flow needs time to page through, so it always uses the
+        // long toast duration; a single question keeps the configured value.
+        string durationAttr = flow.MultiPage || string.Equals(flow.Duration, "long", StringComparison.OrdinalIgnoreCase)
+            ? "long"
+            : "short";
+        sb.Append("<toast duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\">");
+
+        if (flow.MultiPage)
+        {
+            sb.Append("<text>问题 ").Append(page + 1).Append('/').Append(flow.Questions.Count);
+            if (!string.IsNullOrEmpty(q.Header))
+            {
+                sb.Append(" · ").Append(XmlEscape(q.Header!));
+            }
+            sb.Append("</text>");
+        }
+        else
+        {
+            string toastTitle = string.IsNullOrEmpty(q.Header) ? flow.Title : q.Header!;
+            sb.Append("<text>").Append(XmlEscape(toastTitle)).Append("</text>");
+        }
+
+        string questionText = string.IsNullOrEmpty(q.Question) ? flow.Body : q.Question!;
+        sb.Append("<text>").Append(XmlEscape(questionText));
 
         if (!string.IsNullOrEmpty(q.Detail))
         {
@@ -343,23 +379,35 @@ static class Program
 
         if (q.IsMultiSelect)
         {
-            sb.Append("\n\n可多选：请在输入框输入多个序号，如 1,2");
+            sb.Append("\n\n可多选：在输入框输入多个序号，如 1,2");
         }
 
-        sb.Append("</text></binding></visual><actions>");
+        sb.Append("</text>");
 
-        if (q.IsMultiSelect)
+        if (hint.Length > 0)
         {
-            // Multi-select: user types numbers like "1,2" into the input.
-            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"输入序号，如 1,2\"/>");
+            sb.Append("<text>").Append(XmlEscape(hint)).Append("</text>");
         }
-        else
+
+        if (flow.MultiPage)
         {
-            // Single-select: use the native dropdown so all options are fully
-            // visible in the popup. The text input below is for a custom
-            // answer; if filled, it overrides the dropdown selection.
+            sb.Append("<text>").Append(XmlEscape(AnsweredSummary(flow))).Append("</text>");
+        }
+
+        sb.Append("</binding></visual><actions>");
+
+        if (!q.IsMultiSelect && options.Count > 0)
+        {
+            // Single-select: the native dropdown plus a free-text override.
+            // defaultInput restores the previous choice when the user pages
+            // back, which the native control otherwise cannot do.
             int maxOptions = Math.Min(options.Count, 5);
-            sb.Append("<input id=\"select\" type=\"selection\" title=\"请选择一项\">");
+            sb.Append("<input id=\"select\" type=\"selection\" title=\"请选择一项\"");
+            if (draft.Selected > 0)
+            {
+                sb.Append(" defaultInput=\"").Append(draft.Selected).Append('"');
+            }
+            sb.Append('>');
             for (int i = 0; i < maxOptions; i++)
             {
                 string desc = options[i].Description ?? "";
@@ -370,84 +418,517 @@ static class Program
                   .Append(XmlEscape(content))
                   .Append("\"/>");
             }
-            if (options.Count < 5)
-            {
-                sb.Append("<selection id=\"__custom__\" content=\"自定义答案\"/>");
-            }
             sb.Append("</input>");
-            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选）\"/>");
+            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选，填了会覆盖选择）\"");
+            if (draft.Custom.Length > 0)
+            {
+                sb.Append(" defaultInput=\"").Append(XmlEscape(draft.Custom)).Append('"');
+            }
+            sb.Append("/>");
+        }
+        else
+        {
+            string placeholder = q.IsMultiSelect ? "输入序号，如 1,2" : "输入你的答案";
+            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"").Append(placeholder).Append('"');
+            if (draft.Custom.Length > 0)
+            {
+                sb.Append(" defaultInput=\"").Append(XmlEscape(draft.Custom)).Append('"');
+            }
+            sb.Append("/>");
+        }
+
+        if (flow.MultiPage && page > 0)
+        {
+            sb.Append("<action content=\"上一题\" arguments=\"prev\" activationType=\"foreground\"/>");
+        }
+        if (flow.MultiPage && page < flow.Questions.Count - 1)
+        {
+            sb.Append("<action content=\"下一题\" arguments=\"next\" activationType=\"foreground\"/>");
+        }
+        else
+        {
+            sb.Append("<action content=\"提交\" arguments=\"submit\" activationType=\"foreground\"/>");
         }
         sb.Append("<action content=\"取消\" arguments=\"cancel\" activationType=\"foreground\"/>");
-        sb.Append("<action content=\"Send\" arguments=\"send\" activationType=\"foreground\"/>");
-
         sb.Append("</actions></toast>");
 
-        var doc = new XmlDocument();
-        doc.LoadXml(sb.ToString());
-        var toast = new ToastNotification(doc);
-        toast.Tag = "dsh-q-" + Guid.NewGuid().ToString("N");
-        toast.Activated += handler;
-        // If the user ignores the question toast and Windows dismisses it by
-        // timeout, fall back to a taskbar flash so the pending question is not
-        // missed. Manual dismissal (user closed it) does not flash.
-        // The flash is a single warm pulse followed by a slow re-pulse (~3 s)
-        // so the taskbar stays gently highlighted without rapid blinking.
-        int gen = _flashGeneration;
-        toast.Dismissed += (s, e) =>
-        {
-            if (e.Reason == ToastDismissalReason.TimedOut && gen == _flashGeneration)
-            {
-                _flashEnabled = true;
-                FlashTaskbar();
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        while (_flashEnabled)
-                        {
-                            await Task.Delay(3000);
-                            if (_flashEnabled) FlashTaskbar();
-                        }
-                    }
-                    catch (OperationCanceledException) { }
-                });
-            }
-        };
-        ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
-    }
-
-    // ---------------------------------------------------------------------
-    // Post-action confirmation toasts. After the user clicks "Send" (or
-    // "取消"), the original question toast is dismissed by Windows. These
-    // small follow-up toasts give the user a clear "✓ 已发送" / "已取消" /
-    // "✗ 发送失败" signal so they know their action landed — the DSH host
-    // has already received and processed the answer before the confirmation
-    // is shown (SubmitAsync waits for the HTTP response).
-    // ---------------------------------------------------------------------
-    static void ShowToast(string text, string tagPrefix)
-    {
         try
         {
             var doc = new XmlDocument();
-            string xml = "<toast><visual><binding template=\"ToastGeneric\"><text>"
-              + XmlEscape(text)
-              + "</text></binding></visual></toast>";
-            doc.LoadXml(xml);
-            var toast = new ToastNotification(doc);
-            toast.Tag = tagPrefix + "-" + Guid.NewGuid().ToString("N");
+            doc.LoadXml(sb.ToString());
+            flow.ShowSeq++;
+            flow.QuestionTag = "dsh-q-" + flow.TagSeq.ToString() + "-" + flow.ShowSeq.ToString();
+            var toast = new ToastNotification(doc)
+            {
+                Tag = flow.QuestionTag,
+                Group = QuestionGroup,
+            };
+            Track(flow.QuestionTag);
+            toast.Activated += (sender, eventArgs) => OnActivated(flow, page, eventArgs);
+            // If the user ignores the question toast and Windows dismisses it
+            // by timeout, fall back to a taskbar flash so the pending question
+            // is not missed. Manual dismissal does not flash.
+            int generation = _flashGeneration;
+            toast.Dismissed += (sender, eventArgs) =>
+            {
+                if (eventArgs.Reason == ToastDismissalReason.TimedOut && generation == _flashGeneration)
+                {
+                    _flashEnabled = true;
+                    FlashTaskbar();
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            while (_flashEnabled)
+                            {
+                                await Task.Delay(3000);
+                                if (_flashEnabled) FlashTaskbar();
+                            }
+                        }
+                        catch (OperationCanceledException) { }
+                    });
+                }
+            };
             ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
+        }
+        catch (Exception error)
+        {
+            Log("show failed: " + error.Message);
+        }
+    }
+
+    static string AnsweredSummary(QuestionFlow flow)
+    {
+        var parts = new List<string>();
+        for (int i = 0; i < flow.Questions.Count; i++)
+        {
+            var text = AnswerText(flow, i);
+            if (text.Length == 0) continue;
+            var question = flow.Questions[i];
+            var label = string.IsNullOrEmpty(question.Header) ? "第" + (i + 1) + "题" : question.Header!;
+            parts.Add(label + "=" + Shorten(text, 24));
+        }
+        return parts.Count == 0 ? "已答：尚无" : "已答：" + string.Join("；", parts);
+    }
+
+    static string AnswerText(QuestionFlow flow, int page)
+    {
+        var question = flow.Questions[page];
+        var draft = flow.Drafts[page];
+        var custom = draft.Custom.Trim();
+        if (custom.Length > 0)
+        {
+            if (question.IsMultiSelect)
+            {
+                var labels = ParseMultiSelection(question, custom);
+                if (labels.Count > 0) return string.Join("、", labels);
+            }
+            return custom;
+        }
+        if (!question.IsMultiSelect && draft.Selected > 0 && question.Options != null
+            && draft.Selected <= question.Options.Count)
+        {
+            return question.Options[draft.Selected - 1].Label;
+        }
+        return "";
+    }
+
+    static List<string> ParseMultiSelection(QuestionData question, string raw)
+    {
+        var selected = new List<string>();
+        if (question.Options == null) return selected;
+        foreach (var part in raw.Split(new[] { ',', '，', ' ', ';', '；' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (int.TryParse(part.Trim(), out int idx) && idx >= 1 && idx <= question.Options.Count)
+            {
+                var label = question.Options[idx - 1].Label;
+                if (!selected.Contains(label)) selected.Add(label);
+            }
+        }
+        return selected;
+    }
+
+    static string Shorten(string text, int max) =>
+        text.Length <= max ? text : text.Substring(0, max - 1).TrimEnd() + "…";
+
+    static async void OnActivated(QuestionFlow flow, int page, object eventArgs)
+    {
+        try
+        {
+            var activated = eventArgs as ToastActivatedEventArgs;
+            if (activated == null) return;
+
+            // A click on the toast BODY carries no action arguments. Windows
+            // dismisses the toast on that click, so re-open the same page; the
+            // saved draft makes the previous choice reappear in the controls.
+            if (string.IsNullOrEmpty(activated.Arguments))
+            {
+                await Task.Delay(700);
+                flow.Current = page;
+                ShowQuestion(flow);
+                return;
+            }
+
+            SaveDraft(flow, page, activated);
+            var action = activated.Arguments.ToLowerInvariant();
+
+            if (action == "cancel")
+            {
+                _flashEnabled = false;
+                Send(new Dictionary<string, object?>
+                {
+                    ["ev"] = "cancel",
+                    ["id"] = flow.Id,
+                    ["sessionId"] = flow.Session,
+                });
+                // Cancelling is honest: nothing was sent to the agent, and the
+                // confirmation says exactly that.
+                ShowStatus(flow, new[]
+                {
+                    "已取消",
+                    "没有向 DSH 提交任何答案。",
+                }, "short");
+                RemoveToast(flow.QuestionTag, QuestionGroup);
+                FinishFlow(flow);
+                Log("cancelled: " + flow.Id);
+                return;
+            }
+
+            if (action == "prev")
+            {
+                flow.Current = Math.Max(0, page - 1);
+                ShowQuestion(flow);
+                return;
+            }
+
+            if (action == "next")
+            {
+                flow.Current = Math.Min(flow.Questions.Count - 1, page + 1);
+                ShowQuestion(flow);
+                return;
+            }
+
+            if (action == "submit")
+            {
+                var missing = FirstUnanswered(flow);
+                if (missing >= 0)
+                {
+                    // Jump to the first unanswered page and say why; the user
+                    // keeps every other draft.
+                    flow.Current = missing;
+                    flow.Hint = "⚠ 第 " + (missing + 1) + " 题还没有回答";
+                    ShowQuestion(flow);
+                    return;
+                }
+                Submit(flow);
+            }
+        }
+        catch (Exception error)
+        {
+            _flashEnabled = false;
+            Log("activation failed: " + error.Message);
+            ShowStatus(flow, new[]
+            {
+                "✗ 处理回答失败",
+                "请在 DSH 窗口中重新作答。",
+            }, "short");
+        }
+    }
+
+    /// <summary>Fold the action's input values into the page's draft.</summary>
+    static void SaveDraft(QuestionFlow flow, int page, ToastActivatedEventArgs activated)
+    {
+        var question = flow.Questions[page];
+        var draft = flow.Drafts[page];
+        if (activated.UserInput.ContainsKey("select"))
+        {
+            var raw = activated.UserInput["select"]?.ToString() ?? "";
+            if (int.TryParse(raw, out int idx) && idx >= 1 && idx <= (question.Options?.Count ?? 0))
+            {
+                draft.Selected = idx;
+            }
+        }
+        if (activated.UserInput.ContainsKey("custom"))
+        {
+            draft.Custom = activated.UserInput["custom"]?.ToString() ?? "";
+        }
+    }
+
+    static int FirstUnanswered(QuestionFlow flow)
+    {
+        for (int i = 0; i < flow.Questions.Count; i++)
+        {
+            var draft = flow.Drafts[i];
+            if (draft.Custom.Trim().Length > 0) continue;
+            if (!flow.Questions[i].IsMultiSelect && draft.Selected > 0) continue;
+            return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Hand the batch to the host. The toast only says "submitted, waiting for
+    /// DSH" here — the "delivered" claim is made by the host, once it has
+    /// actually seen the answer reach the agent.
+    /// </summary>
+    static void Submit(QuestionFlow flow)
+    {
+        flow.Submitted = true;
+        _flashEnabled = false;
+
+        Send(new Dictionary<string, object?>
+        {
+            ["ev"] = "answer",
+            ["id"] = flow.Id,
+            ["sessionId"] = flow.Session,
+            ["answers"] = BuildAnswers(flow)
+                .Select(answer => new Dictionary<string, object?>
+                {
+                    ["id"] = answer.Id,
+                    ["selected"] = answer.Selected,
+                    ["custom"] = answer.Custom,
+                })
+                .ToList(),
+        });
+
+        ShowStatus(flow, new[] { "⏳ 已提交，等待 DSH 确认…" }, "short");
+        RemoveToast(flow.QuestionTag, QuestionGroup);
+        Log("answer submitted: " + flow.Id);
+    }
+
+    static List<AnswerItem> BuildAnswers(QuestionFlow flow)
+    {
+        var answers = new List<AnswerItem>();
+        for (int i = 0; i < flow.Questions.Count; i++)
+        {
+            var question = flow.Questions[i];
+            var draft = flow.Drafts[i];
+            var custom = draft.Custom.Trim();
+            if (question.IsMultiSelect)
+            {
+                var selected = ParseMultiSelection(question, custom);
+                answers.Add(new AnswerItem
+                {
+                    Id = question.Id ?? "",
+                    Selected = selected,
+                    Custom = selected.Count == 0 && custom.Length > 0 ? custom : null,
+                });
+            }
+            else if (custom.Length > 0)
+            {
+                answers.Add(new AnswerItem
+                {
+                    Id = question.Id ?? "",
+                    Selected = new List<string>(),
+                    Custom = custom,
+                });
+            }
+            else
+            {
+                string label = draft.Selected > 0 && question.Options != null
+                    && draft.Selected <= question.Options.Count
+                    ? question.Options[draft.Selected - 1].Label
+                    : "";
+                answers.Add(new AnswerItem
+                {
+                    Id = question.Id ?? "",
+                    Selected = new List<string> { label },
+                    Custom = null,
+                });
+            }
+        }
+        return answers;
+    }
+
+    // ---------------------------------------------------------------------
+    // Host status -> confirmation toast. Every state here is a fact the host
+    // established; nothing is guessed by this process.
+    // ---------------------------------------------------------------------
+    static void ApplyStatus(InboundMessage message)
+    {
+        if (string.IsNullOrEmpty(message.Id)) return;
+        QuestionFlow? flow;
+        lock (FlowsLock) Flows.TryGetValue(message.Id!, out flow);
+        if (flow == null) return;
+
+        string? detail = message.Detail;
+        switch (message.State)
+        {
+            case "pending":
+                ShowStatus(flow, new[] { "⏳ 已提交，等待 DSH 确认…" }, "short");
+                break;
+            case "delivered":
+                ShowStatus(flow, new[]
+                {
+                    "✓ 回答已送达 agent",
+                    string.IsNullOrEmpty(detail) ? "agent 已收到你的选择。" : "你选择了：" + detail,
+                }, "short");
+                break;
+            case "spoken":
+                ShowStatus(flow, new[]
+                {
+                    "✓ agent 已收到并回应",
+                    "“" + (detail ?? "") + "”",
+                }, "long");
+                FinishFlow(flow);
+                break;
+            case "nospeech":
+                ShowStatus(flow, new[]
+                {
+                    "✓ 回答已送达 agent",
+                    "本轮没有文本回复，可继续在 DSH 中查看。",
+                }, "short");
+                FinishFlow(flow);
+                break;
+            case "timeout":
+                ShowStatus(flow, new[]
+                {
+                    "⚠ 未收到 DSH 确认",
+                    "请打开 DSH 查看这个问题的状态。",
+                }, "long");
+                FinishFlow(flow);
+                break;
+            case "manual":
+                // Not terminal: the card may still be answered by hand, and the
+                // host's real delivery confirmation can replace this hint.
+                ShowStatus(flow, new[]
+                {
+                    "⚠ 无法自动填入答案",
+                    "请在 DSH 窗口中手动回答。",
+                }, "long");
+                break;
+            case "stale":
+                ShowStatus(flow, new[]
+                {
+                    "该问题已在 DSH 中处理",
+                    "无需再回答。",
+                }, "short");
+                FinishFlow(flow);
+                break;
+            case "mismatch":
+                ShowStatus(flow, new[]
+                {
+                    "⚠ agent 收到的是其它答案",
+                    detail ?? "",
+                }, "long");
+                FinishFlow(flow);
+                break;
+            case "failed":
+                ShowStatus(flow, new[]
+                {
+                    "✗ 未能送达 agent",
+                    detail ?? "请回到 DSH 窗口处理。",
+                }, "long");
+                FinishFlow(flow);
+                break;
+            default:
+                Log("unknown state: " + message.State);
+                break;
+        }
+    }
+
+    /// <summary>Show (or replace) the answer-receipt toast for one flow.</summary>
+    static void ShowStatus(QuestionFlow flow, string[] lines, string duration)
+    {
+        try
+        {
+            string durationAttr = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase) ? "long" : "short";
+            var sb = new StringBuilder();
+            sb.Append("<toast duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\">");
+            foreach (var line in lines)
+            {
+                if (line.Length == 0) continue;
+                sb.Append("<text>").Append(XmlEscape(line)).Append("</text>");
+            }
+            sb.Append("</binding></visual></toast>");
+
+            var doc = new XmlDocument();
+            doc.LoadXml(sb.ToString());
+            var toast = new ToastNotification(doc)
+            {
+                Tag = flow.StatusTag,
+                Group = AnswerGroup,
+            };
+            Track(flow.StatusTag);
+            ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
+        }
+        catch (Exception error)
+        {
+            Log("status toast failed: " + error.Message);
+        }
+    }
+
+    static void RemoveToast(string tag, string group)
+    {
+        try
+        {
+            ToastNotificationManager.History.Remove(tag, group, Aumid);
+        }
+        catch { }
+        lock (LiveToasts) LiveToasts.Remove(tag);
+    }
+
+    static void Track(string tag)
+    {
+        lock (LiveToasts)
+        {
+            if (!LiveToasts.Add(tag)) return;
+            TrackOrder.Enqueue(tag);
+            // Only the newest toasts need shutdown cleanup; older ones have
+            // already expired. This keeps both structures bounded.
+            while (TrackOrder.Count > 32)
+            {
+                LiveToasts.Remove(TrackOrder.Dequeue());
+            }
+        }
+    }
+
+    static void CleanupToasts()
+    {
+        string[] tags;
+        lock (LiveToasts) tags = LiveToasts.ToArray();
+        foreach (var tag in tags)
+        {
+            RemoveToast(tag, tag.StartsWith("dsh-q-", StringComparison.Ordinal) ? QuestionGroup : AnswerGroup);
+        }
+        lock (LiveToasts) LiveToasts.Clear();
+    }
+
+    static void Send(Dictionary<string, object?> payload)
+    {
+        try
+        {
+            string json = JsonSerializer.Serialize(payload, JsonOptions);
+            lock (WriteLock)
+            {
+                if (_out == null) return;
+                _out.WriteLine(json);
+                _out.Flush();
+            }
+        }
+        catch
+        {
+            // The host is gone: the stdin loop will observe EOF and exit.
+        }
+    }
+
+    static void Log(string message)
+    {
+        if (string.IsNullOrEmpty(_logPath)) return;
+        try
+        {
+            File.AppendAllText(_logPath!, DateTime.Now.ToString("HH:mm:ss.fff") + " " + message + Environment.NewLine);
         }
         catch { }
     }
 
-    static void ShowSentToast() => ShowToast("✓ 已发送", "dsh-sent");
-    static void ShowCancelledToast() => ShowToast("已取消", "dsh-cancel");
-    static void ShowErrorToast() => ShowToast("✗ 发送失败，请重试", "dsh-err");
+    static string XmlEscape(string s) =>
+        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
     // ---------------------------------------------------------------------
     // Taskbar flash fallback for ignored question toasts. Mirrors the
     // FLASHW_TRAY behaviour used by notify.ps1 (stable across virtual
-    // desktops) and only flashes the DSH PWA taskbar button.
+    // desktops) and only flashes the DSH window.
     // ---------------------------------------------------------------------
     delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -500,52 +981,13 @@ static class Program
                 hwnd = found,
                 dwFlags = 2,  // FLASHW_TRAY only — single warm pulse, not continuous blinking
                 uCount = 1,
-                dwTimeout = 0
+                dwTimeout = 0,
             };
             FlashWindowEx(ref info);
         }
         catch
         {
             // Best-effort: flashing must never break the toast flow.
-        }
-    }
-
-    static async Task<bool> SubmitAsync(string session, List<AnswerItem> answers)
-    {
-        try
-        {
-            var payload = new AnswerPayload { SessionId = session, Answers = answers };
-            string json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            });
-            using var http = new HttpClient();
-            http.Timeout = TimeSpan.FromSeconds(5);
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var resp = await http.PostAsync(AnswerUrl, content);
-            return resp.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    static async Task<bool> SubmitCancelAsync(string session)
-    {
-        try
-        {
-            string json = JsonSerializer.Serialize(new { sessionId = session, cancel = true });
-            using var http = new HttpClient();
-            http.Timeout = TimeSpan.FromSeconds(5);
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var resp = await http.PostAsync(AnswerUrl, content);
-            return resp.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
         }
     }
 }

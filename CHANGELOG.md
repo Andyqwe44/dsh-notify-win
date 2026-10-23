@@ -4,6 +4,70 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-23
+
+### Added
+
+- **Paged multi-question toast.** A batch of two or more questions is now one
+  toast with `上一题 / 下一题 / 提交 / 取消` navigation and a `问题 i/n` header,
+  instead of a new toast per question. The header also shows the question's
+  own heading when it has one.
+- **Drafts survive paging.** Every page keeps its dropdown choice and custom
+  text. Returning to a page restores the dropdown through the toast XML
+  `defaultInput` attribute (and the text field through its own `defaultInput`),
+  and a `已答：…` line summarises the other answers. Submitting with an
+  unanswered page jumps back to it with a hint instead of failing silently.
+- **Custom answer field on every page.** Single-select pages carry both the
+  dropdown and a free-text override; multi-select and optionless pages use the
+  text field alone. A filled custom answer wins over the dropdown, matching the
+  previous single-question behaviour.
+
+### Changed
+
+- Multi-page question toasts always use the `long` duration so there is time to
+  page through; single-question toasts still honour `questionToastDuration`.
+- Each page is shown with a fresh toast tag, so the native show animation runs
+  (the same behaviour the standalone demo was judged on).
+
+## [0.4.0] - 2026-10-23
+
+### Added
+
+- **Resident question helper, tied to the plugin lifetime.** `dsh-toast-question.exe`
+  now runs in `--serve` mode as one long-lived child of the DSH host, spoken to
+  over the child's stdin/stdout with newline-delimited JSON. The plugin starts it
+  in `apply`, reuses it for every question (no per-question process spawn), sends
+  `shutdown` when the plugin is disposed, and the helper also exits on stdin EOF
+  when DSH quits — so a disabled plugin or a closed DSH never leaves an orphan.
+- **Honest two-stage answer receipt.** The toast no longer claims “已发送” right
+  after the HTTP call. It says “⏳ 已提交，等待 DSH 确认…” and only switches to
+  “✓ 回答已送达 agent” after the actual `ask_user_question` tool result returns.
+  It then switches to “✓ agent 已收到并回应” with the **model's first sentence**,
+  captured from `agent/assistant-stream` `text-delta` frames — text that can only
+  exist if the answer really reached the model.
+- The receipt reports the truth in every branch: a mismatched agent answer
+  (“agent 收到的是其它答案”), a card that could not be filled (“请在 DSH 窗口中手动回答”),
+  a window that never confirmed (“未收到 DSH 确认”), a stale toast (“该问题已在
+  DSH 中处理”), and a turn with no visible text (“本轮没有文本回复”).
+- Multi-question batches and custom text are now driven on the official card
+  (select options / type custom text per page, advance, submit) and the browser
+  half reports a failed drive to the host.
+- New config: `helperEnabled`, `helperLog`, `answerPendingTimeoutMs`,
+  `answerSpeechTimeoutMs`, `helperUnavailableHint`.
+
+### Changed
+
+- The interactive helper no longer posts over HTTP, so the Web GUI port no longer
+  matters for toast answers. `/dsh-notify/answer` stays as a manual-test route.
+- The helper seeds toast tag numbers from its pid, so two overlapping helper
+  instances cannot replace each other's question toast.
+
+### Removed
+
+- The one-shot `--session/--qid/--questions/--url` helper invocation and its
+  “✓ 已发送” confirmation, which could not distinguish “HTTP accepted” from
+  “agent received”.
+
 ## [0.3.3] - 2026-10-23
 
 ### Added

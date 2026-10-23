@@ -16,12 +16,13 @@ function makeCtx(spawns, handlers) {
       if (name === 'subprocess') {
         return {
           async resolveExecutable(cmd) { return `C:\\mock\\${cmd}.exe` },
-          spawn(spec) { spawns.push(spec); return { done: Promise.resolve({ code: 0 }) } },
+          spawn(spec) { spawns.push(spec); return { done: Promise.resolve({ exitCode: 0, signal: null }) } },
         }
       }
       return undefined
     },
     on(name, fn) { handlers[name] = fn },
+    effect(fn) { return fn() },
   }
 }
 
@@ -34,7 +35,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   const spawns = []
   const handlers = {}
   const nextCalls = []
-  plugin.apply(makeCtx(spawns, handlers), {})   // default dedupMs 1500
+  plugin.apply(makeCtx(spawns, handlers), { helperEnabled: false })   // default dedupMs 1500
 
   const projA = { id: 'sess-A', header: { delegationDepth: 0 } }
   const projB = { id: 'sess-B', header: { delegationDepth: 0 } }
@@ -60,7 +61,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   const spawns = []
   const nextCalls = []
   const h = {}
-  plugin.apply(makeCtx(spawns, h), {})
+  plugin.apply(makeCtx(spawns, h), { helperEnabled: false })
   const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
   const child = { session: { id: 'child', header: { delegationDepth: 2 } } }
 
@@ -89,7 +90,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
 {
   const spawns = []
   const h = {}
-  plugin.apply(makeCtx(spawns, h), { dedupMs: 0 })
+  plugin.apply(makeCtx(spawns, h), { helperEnabled: false, dedupMs: 0 })
   const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
   h['agent/status']({ status: 'idle', agent: root })
   h['agent/status']({ status: 'idle', agent: root })
@@ -104,7 +105,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
 {
   const spawns = []
   const h = {}
-  plugin.apply(makeCtx(spawns, h), {})
+  plugin.apply(makeCtx(spawns, h), { helperEnabled: false })
   const a = { session: { id: 'A', header: { delegationDepth: 0 } } }
   const b = { session: { id: 'B', header: { delegationDepth: 0 } } }
   h['agent/status']({ status: 'idle', agent: a })
@@ -130,7 +131,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   {
     const spawns = []
     const h = {}
-    plugin.apply(makeCtx(spawns, h), {})
+    plugin.apply(makeCtx(spawns, h), { helperEnabled: false })
     const session = { id: 'E', header: { delegationDepth: 0, cwd: repoDir } }
     h['agent/status']({ status: 'idle', agent: { session } })
     await YIELD()
@@ -144,7 +145,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   {
     const spawns = []
     const h = {}
-    plugin.apply(makeCtx(spawns, h), {})
+    plugin.apply(makeCtx(spawns, h), { helperEnabled: false })
     const session = { id: 'F', header: { delegationDepth: 0, cwd: plainDir } }
     h['agent/status']({ status: 'idle', agent: { session } })
     await YIELD()
@@ -158,7 +159,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   {
     const spawns = []
     const h = {}
-    plugin.apply(makeCtx(spawns, h), { showProject: false })
+    plugin.apply(makeCtx(spawns, h), { helperEnabled: false, showProject: false })
     const session = { id: 'G', header: { delegationDepth: 0, cwd: repoDir } }
     h['agent/status']({ status: 'idle', agent: { session } })
     await YIELD()
@@ -178,7 +179,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   const runCase = async (name, events, { idle = true, ...options } = {}) => {
     const spawns = []
     const h = {}
-    plugin.apply(makeCtx(spawns, h), options)
+    plugin.apply(makeCtx(spawns, h), { helperEnabled: false, ...options })
     const session = { id: `sess-${name}`, header: { delegationDepth: 0 } }
     for (const event of events) h['session/event'](session, event)
     // Compaction reports on session/event alone; every turn-end case needs the
@@ -273,7 +274,7 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   {
     const spawns = []
     const h = {}
-    plugin.apply(makeCtx(spawns, h), { dedupMs: 0 })
+    plugin.apply(makeCtx(spawns, h), { helperEnabled: false, dedupMs: 0 })
     const session = { id: 'sess-O', header: { delegationDepth: 0 } }
     h['session/event'](session, turnEnd({ kind: 'max-tokens' }))
     h['agent/status']({ status: 'idle', agent: { session } })
