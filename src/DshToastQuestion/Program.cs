@@ -149,6 +149,8 @@ static class Program
                 {
                     bool ok = await SubmitCancelAsync(session);
                     _flashEnabled = false;
+                    if (ok) ShowCancelledToast();
+                    else ShowErrorToast();
                     done.TrySetResult(ok);
                     return;
                 }
@@ -187,7 +189,11 @@ static class Program
                             }
                         }
                     }
-                    if (selected.Count == 0 && string.IsNullOrWhiteSpace(custom)) return; // no answer
+                    if (selected.Count == 0 && string.IsNullOrWhiteSpace(custom))
+                    {
+                        ShowToast("请选择答案", "dsh-none");
+                        return;
+                    }
                     answers.Add(new AnswerItem
                     {
                         Id = q.Id ?? "",
@@ -209,7 +215,11 @@ static class Program
                     }
                     else
                     {
-                        if (selectedLabel.Length == 0) return; // no answer
+                        if (selectedLabel.Length == 0)
+                        {
+                            ShowToast("请选择答案", "dsh-none");
+                            return;
+                        }
                         answers.Add(new AnswerItem
                         {
                             Id = q.Id ?? "",
@@ -222,23 +232,26 @@ static class Program
                 current++;
                 if (current < questions.Count)
                 {
-                    ShowQuestion(questions[current], title, body, Handler);
+                    ShowQuestion(questions[current], title, body, Handler, duration);
                 }
                 else
                 {
                     bool ok = await SubmitAsync(session, answers);
                     _flashEnabled = false;
+                    if (ok) ShowSentToast();
+                    else ShowErrorToast();
                     done.TrySetResult(ok);
                 }
             }
             catch
             {
                 _flashEnabled = false;
+                ShowErrorToast();
                 done.TrySetResult(false);
             }
         }
 
-        ShowQuestion(questions[0], title, body, Handler);
+        ShowQuestion(questions[0], title, body, Handler, duration);
 
         // Keep the process alive until all questions are answered or 5 minutes
         // pass (the host also enforces a 5-minute grace period).
@@ -247,7 +260,7 @@ static class Program
         return 0;
     }
 
-    static void ShowQuestion(QuestionData q, string fallbackTitle, string fallbackBody, TypedEventHandler<ToastNotification, object> handler)
+    static void ShowQuestion(QuestionData q, string fallbackTitle, string fallbackBody, TypedEventHandler<ToastNotification, object> handler, string duration)
     {
         // Invalidate any flash timer from a previous question and stop it.
         _flashGeneration++;
@@ -263,7 +276,11 @@ static class Program
         // collapse when the pointer moves onto the popup, but the timeout
         // flash fallback (Dismissed -> FlashTaskbar) covers that case.
         // Without useButtonStyle the Send button cannot use hint-buttonStyle.
-        sb.Append("<toast><visual><binding template=\"ToastGeneric\"><text>")
+        // WinRT exposes no ToastNotification.Duration property: the display
+        // duration is a toast XML attribute (short ~5 s, long ~25 s). Only an
+        // explicit 'long' opts in, matching the documented config default.
+        string durationAttr = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase) ? "long" : "short";
+        sb.Append("<toast duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\"><text>")
           .Append(XmlEscape(toastTitle))
           .Append("</text><text>")
           .Append(XmlEscape(questionText));
@@ -338,9 +355,6 @@ static class Program
         doc.LoadXml(sb.ToString());
         var toast = new ToastNotification(doc);
         toast.Tag = "dsh-q-" + Guid.NewGuid().ToString("N");
-        toast.Duration = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase)
-            ? ToastDuration.Long
-            : ToastDuration.Short;
         toast.Activated += handler;
         // If the user ignores the question toast and Windows dismisses it by
         // timeout, fall back to a taskbar flash so the pending question is not
@@ -370,6 +384,34 @@ static class Program
         };
         ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
     }
+
+    // ---------------------------------------------------------------------
+    // Post-action confirmation toasts. After the user clicks "Send" (or
+    // "取消"), the original question toast is dismissed by Windows. These
+    // small follow-up toasts give the user a clear "✓ 已发送" / "已取消" /
+    // "✗ 发送失败" signal so they know their action landed — the DSH host
+    // has already received and processed the answer before the confirmation
+    // is shown (SubmitAsync waits for the HTTP response).
+    // ---------------------------------------------------------------------
+    static void ShowToast(string text, string tagPrefix)
+    {
+        try
+        {
+            var doc = new XmlDocument();
+            string xml = "<toast><visual><binding template=\"ToastGeneric\"><text>"
+              + XmlEscape(text)
+              + "</text></binding></visual></toast>";
+            doc.LoadXml(xml);
+            var toast = new ToastNotification(doc);
+            toast.Tag = tagPrefix + "-" + Guid.NewGuid().ToString("N");
+            ToastNotificationManager.CreateToastNotifier(Aumid).Show(toast);
+        }
+        catch { }
+    }
+
+    static void ShowSentToast() => ShowToast("✓ 已发送", "dsh-sent");
+    static void ShowCancelledToast() => ShowToast("已取消", "dsh-cancel");
+    static void ShowErrorToast() => ShowToast("✗ 发送失败，请重试", "dsh-err");
 
     // ---------------------------------------------------------------------
     // Taskbar flash fallback for ignored question toasts. Mirrors the

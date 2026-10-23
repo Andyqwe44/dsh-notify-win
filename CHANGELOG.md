@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-10-23
+
+### Added
+
+- **Post-action confirmation toasts**, merged in from the published `0.2.1`
+  line: clicking "Send" or "取消" on a question toast now shows a follow-up
+  toast — "✓ 已发送" once the DSH host has accepted the answer, "已取消" for a
+  cancellation, and "✗ 发送失败，请重试" when the round trip fails. Submitting
+  without a selection now says "请选择答案" instead of closing silently.
+
+### Fixed
+
+- The `0.2.1` confirmation toasts and the `0.3.0` taskbar-flash control now
+  coexist: the flash stops first, then the confirmation toast appears.
+
 ## [0.3.0] - 2026-10-23
 
 ### Added
@@ -50,6 +65,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cancelling a running turn no longer reports "task complete"; it reports
   "cancelled" (silenceable via `notifyOnCancel: false`).
 - Plugin/agent disposal no longer fires a spurious "task complete" toast.
+
+## [0.2.1] - 2026-08-20
+
+### Added
+
+- **Post-action confirmation toasts**: after the user clicks "Send" (or "取消"),
+  the question toast is dismissed by Windows, then a small follow-up toast
+  confirms the outcome — "✓ 已发送" when DSH receives the answer, "已取消" for
+  cancellation, "✗ 发送失败，请重试" on network/error failure. The confirmation
+  only appears after `SubmitAsync` waits for the DSH host HTTP response, so the
+  user gets a real round-trip signal, not a fake one.
 
 ## [0.2.0] - 2026-08-16
 
