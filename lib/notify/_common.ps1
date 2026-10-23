@@ -250,9 +250,11 @@ function Get-DshToastSequence {
 }
 
 # ---------------------------------------------------------------------------
-# Show one toast. The self-registered DeepSeekHarness AUMID can be silently
-# dropped by Windows even though Show() does not throw, so prefer the real
-# installed app AUMID and fall back to the system PowerShell identity.
+# Show one toast. The branded DeepSeekHarness identity is registered by
+# Initialize-DshToastIdentity (AppUserModelID key + Start Menu shortcut), so the
+# header reads "DeepSeek Harness" with our own icon instead of "Windows
+# PowerShell". The system identities remain as fallbacks: an identity whose
+# notifier cannot be created throws, and then the next one is tried.
 # ---------------------------------------------------------------------------
 function Show-DshToast {
   param(
@@ -274,6 +276,9 @@ function Show-DshToast {
       } | Select-Object -First 1).AppID
     } catch {}
     $candidates = @()
+    # Branded identity first: registered by Initialize-DshToastIdentity, so the
+    # toast header reads "DeepSeek Harness" with our own icon.
+    $candidates += ,@('DeepSeekHarness', 'branded')
     if ($pwaAumid) { $candidates += ,@($pwaAumid, 'pwa') }
     $candidates += ,@('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe', 'powershell')
     foreach ($candidate in $candidates) {

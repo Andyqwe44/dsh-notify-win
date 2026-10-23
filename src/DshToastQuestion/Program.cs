@@ -110,6 +110,29 @@ static class Program
     static string XmlEscape(string s) =>
         s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
+    // Hero banner for the toast that actually demands a decision. The light/dark
+    // variant follows the system app theme; a missing asset degrades to no image.
+    static string HeroImageXml()
+    {
+        try
+        {
+            bool dark = true;
+            using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"))
+            {
+                if (key?.GetValue("AppsUseLightTheme") is int light) dark = light == 0;
+            }
+            string name = dark ? "dsh-hero-dark.png" : "dsh-hero-light.png";
+            string path = Path.Combine(AppContext.BaseDirectory, name);
+            if (!File.Exists(path)) return "";
+            return "<image placement=\"hero\" src=\"" + XmlEscape(new Uri(path).AbsoluteUri) + "\"/>";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
     [STAThread]
     static async Task<int> Main(string[] args)
     {
@@ -280,7 +303,12 @@ static class Program
         // duration is a toast XML attribute (short ~5 s, long ~25 s). Only an
         // explicit 'long' opts in, matching the documented config default.
         string durationAttr = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase) ? "long" : "short";
-        sb.Append("<toast duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\"><text>")
+        // A question is the one notification that genuinely needs a human
+        // decision, so it keeps the hero banner. Ordinary results carry only the
+        // app badge, which is why notify.ps1 drops the hero for every other kind.
+        sb.Append("<toast duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\">")
+          .Append(HeroImageXml())
+          .Append("<text>")
           .Append(XmlEscape(toastTitle))
           .Append("</text><text>")
           .Append(XmlEscape(questionText));

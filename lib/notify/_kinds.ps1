@@ -5,20 +5,24 @@
 # not editing a 400-line script. ASCII only (see _common.ps1).
 #
 # Kinds:
-#   done     normal completion / context compacted  (hero image)
-#   alert    max-tokens, blocked, LLM failure, failed compaction (plain text)
-#   notice   cancelled by the user, parent, or a hook (plain text)
-#   question approval prompt (plain text; interactive questions use the .NET helper)
+#   done     normal completion / context compacted  (app badge only)
+#   alert    max-tokens, blocked, LLM failure, failed compaction (app badge only)
+#   notice   cancelled by the user, parent, or a hook (app badge only)
+#   question approval prompt (hero banner: this one needs a human decision)
+#
+# Only a kind that genuinely needs the user to act gets the hero banner. Ordinary
+# results stay a compact toast with nothing but the app badge, so the big image
+# keeps its meaning instead of becoming wallpaper.
 #
 # -Reason/-Code/-Retry/-RetryMax are diagnostics from the host plugin: they are
 # echoed in the debug line so a manual run reproduces the exact notification.
 
 $script:DshKindStyles = @{
-  done     = @{ Hero = $true;  Flash = $true }
-  compact  = @{ Hero = $true;  Flash = $true }
+  done     = @{ Hero = $false; Flash = $true }
+  compact  = @{ Hero = $false; Flash = $true }
   alert    = @{ Hero = $false; Flash = $true }
   notice   = @{ Hero = $false; Flash = $true }
-  question = @{ Hero = $false; Flash = $true }
+  question = @{ Hero = $true;  Flash = $true }
 }
 
 function Get-DshKindStyle {

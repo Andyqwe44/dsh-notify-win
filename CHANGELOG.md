@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-10-23
+
+### Changed
+
+- **Toast identity is ours.** Every notification is attributed to
+  **DeepSeek Harness** with its own icon (self-registered AppUserModelID plus a
+  Start Menu shortcut). Windows previously fell through to the PowerShell
+  identity, so the toast header read "Windows PowerShell" with the PowerShell
+  icon. The system identities stay as fallbacks when the branded notifier
+  cannot be created.
+- **Hero banners are reserved for a decision.** Only the interactive question
+  toast shows the large image; `done`, `compact`, `alert` and `notice` render
+  badge-only, so the banner keeps its meaning instead of becoming wallpaper.
+
+### Fixed
+
+- `--duration` on the interactive question toast now actually applies
+  (`short`/`long`).
+
 ## [0.3.1] - 2026-10-23
 
 ### Added
@@ -18,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The `0.2.1` confirmation toasts and the `0.3.0` taskbar-flash control now
   coexist: the flash stops first, then the confirmation toast appears.
+- A latent build break in the `0.3.0` source: WinRT has no
+  `ToastNotification.Duration` property, so the value is now emitted as the
+  toast XML `duration` attribute.
 
 ## [0.3.0] - 2026-10-23
 

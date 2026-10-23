@@ -51,8 +51,12 @@ if (Test-DshWindowFocused) {
 try { Initialize-DshToastIdentity } catch {}
 try { Register-DshNotifyProtocol } catch {}
 
+# The hero banner is opt-in per kind (see notify\_kinds.ps1): only the kinds that
+# need a human decision pay for resolving the asset.
 $heroUri = ''
-try { $heroUri = Get-DshHeroUri } catch { $heroUri = '' }
+if ((Get-DshKindStyle $Kind).Hero) {
+  try { $heroUri = Get-DshHeroUri } catch { $heroUri = '' }
+}
 
 $xml = New-DshToastXml -Kind $Kind -Title $Title -Body $Body -Launch $Launch -Duration $Duration -HeroUri $heroUri
 $toast = Show-DshToast -Xml $xml -Tag ('dsh-notify-' + (Get-DshToastSequence))
