@@ -4,6 +4,53 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-23
+
+### Added
+
+- **Stop-reason notifications.** `agent/status` only reports `idle`; the plugin
+  now caches the `turn/end` reason (appended immediately before idle) and says
+  WHY the turn stopped:
+  - `max-tokens` → "output ceiling reached, truncated"
+  - `blocked` → "turn blocked by a pre-step check"
+  - `error` → alert with the provider-neutral failure code hint and the retry
+    count from durable `llm/retry` events
+  - `aborted` (`user`/`parent`/`legacy`) → lightweight "cancelled" notice
+  - `aborted` (`hook`) → notice naming the hook reason
+  - `aborted` (`disposed`) → silent (no bogus "done" toast on shutdown)
+  - `interrupted`/`forked` → silent (durable history markers, never live)
+  - unknown future reasons → generic "stopped" alert
+- Failed context compaction (`compaction/end` with `error`) now alerts instead
+  of staying silent.
+- New config keys: `notifyOnCancel`, `notifyOnError`, `includeErrorCode`,
+  `cancelledTitle/Body`, `hookCancelledBody`, `maxTokensTitle/Body`,
+  `blockedTitle/Body`, `errorTitle/Body`, `retrySuffix`, `retrySuffixUnbounded`,
+  `compactionFailedTitle/Body`, `unknownStopTitle/Body`. Templates support
+  `{message}`, `{code}`, `{hint}`, `{reason}`, `{retry}`, `{retryMax}`.
+- Smoke cases H–O cover every live stop reason, the disposal silence, duplicate
+  idle suppression, and compaction success/failure.
+
+### Changed
+
+- **`notify.ps1` split by concern and notification class**, for maintainability:
+  - `lib/notify.ps1` — entry: parameter validation, helper resolution, pipeline
+  - `lib/notify/_common.ps1` — identity/protocol/theme/focus, toast delivery,
+    balloon fallback, taskbar flash
+  - `lib/notify/_kinds.ps1` — per-kind presentation (`done`, `compact`, `alert`,
+    `notice`, `question`); adding a kind is one map entry
+- `notify.ps1` gained `-Reason`, `-Code`, `-Retry`, `-RetryMax` diagnostics and
+  echoes them in the debug line; the dead `-QuestionId`/`-QuestionsJson`
+  code path was removed (interactive questions use the .NET helper).
+- **Windows PowerShell 5.1 is now preferred over pwsh 7** for `notify.ps1`:
+  pwsh 7 cannot resolve `Windows.UI.Notifications` types and silently degraded
+  every toast to a NotifyIcon balloon.
+
+### Fixed
+
+- Cancelling a running turn no longer reports "task complete"; it reports
+  "cancelled" (silenceable via `notifyOnCancel: false`).
+- Plugin/agent disposal no longer fires a spurious "task complete" toast.
+
 ## [0.2.0] - 2026-08-16
 
 ### Added

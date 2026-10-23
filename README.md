@@ -34,7 +34,8 @@ English | [中文](README.zh.md)
 - 💡 **Taskbar flash** (`FlashWindowEx`) when DSH is in the background
 - 🖱️ **Click-to-focus** — clicking a toast opens DSH and switches to the corresponding session
 - ✅ Triggers when a **task finishes** (root agent goes `idle`)
-- 🗜️ Triggers when **context compaction finishes** (`session/event` → `compaction/end`)
+- 🧭 **Tells you WHY it stopped** — the toast reflects the `turn/end` reason instead of always claiming success: normal finish, output-token ceiling (`max-tokens`), blocked pre-step, LLM failure (provider-neutral code + retry count), or cancellation. See [Stop conditions](#stop-conditions).
+- 🗜️ Triggers when **context compaction finishes** — and alerts when it **fails** (`compaction/end` with `error`)
 - ❓ Triggers when **your input is needed** (approval / `ask_user_question`)
 - 📋 **Single-select question toast**: native dropdown with up to 5 options + “自定义答案” (custom answer) text input + Cancel / Send
 - ⏰ **Timeout flash fallback**: if an interactive toast is ignored and dismissed by the system timeout, the taskbar flashes so the pending question is not missed
@@ -120,9 +121,28 @@ Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
     dedupMs: 1500              # suppress duplicate notifications within this window
     questionToastDuration: 'short'  # 'short' (~5s) or 'long' (~25s) for ask_user_question toasts
     doneToastDuration: 'short'      # 'short' (~5s) or 'long' (~25s) for done/compact/approval toasts
-    noDotNetHint: '（如需从 toast 直接回答，请安装 .NET 10 Desktop Runtime）'  # appended when .NET is missing
+    noDotNetHint: ' (install .NET 10 Desktop Runtime to answer from the toast)'  # appended when .NET is missing
     showProject: true          # prefix body with project label
+
+    # Stop-reason notifications (defaults are Chinese; shown here in English)
+    notifyOnCancel: true       # notice when the user cancels a running turn
+    notifyOnError: true        # alert on max-tokens / blocked / LLM failure / failed compaction
+    includeErrorCode: true     # append the machine-readable failure code to an error body
+    cancelledTitle: 'DeepSeek Harness · Cancelled'
+    cancelledBody: 'The task was cancelled.'
+    hookCancelledBody: 'Blocked by a hook: {message}'
+    maxTokensTitle: 'DeepSeek Harness · Output ceiling reached'
+    maxTokensBody: 'The response hit the output limit and was truncated. Send "continue" to resume.'
+    blockedTitle: 'DeepSeek Harness · Turn blocked'
+    blockedBody: 'A pre-step check rejected this turn.'
+    errorTitle: 'DeepSeek Harness · Task interrupted'
+    errorBody: 'The task stopped abnormally: {hint}'    # {hint} = built-in code hint or provider message
+    retrySuffix: ' (retried {retry}/{retryMax} times)'
+    compactionFailedTitle: 'DeepSeek Harness · Compaction failed'
+    compactionFailedBody: 'Context compaction failed: {message}'
 ```
+
+Templates support `{message}`, `{code}`, `{hint}`, `{reason}`, `{retry}`, `{retryMax}`.
 
 To disable:
 
@@ -133,14 +153,45 @@ To disable:
 
 Restart after install/disable changes (web profile HMR is disabled by default).
 
+## Stop conditions
+
+`agent/status` only says `idle`; it does not say why. The plugin therefore caches the
+`turn/end` reason (which is always appended immediately before the idle transition)
+and turns it into the notification:
+
+| `turn/end` reason | Notification | Notes |
+| --- | --- | --- |
+| `completed` | done | normal finish |
+| `max-tokens` | alert | output-token ceiling; the turn was truncated |
+| `blocked` | alert | a pre-step hook/plugin rejected the turn |
+| `error` | alert | LLM failure; body carries the code hint + retry count |
+| `aborted` (`user`, `parent`, `legacy`) | notice | lightweight "cancelled" |
+| `aborted` (`hook`) | notice | body names the hook reason |
+| `aborted` (`disposed`) | **silent** | disposal cancels the driver right before teardown |
+| `interrupted`, `forked` | **silent** | durable history markers (resume / fork seeds), never live stops |
+| unknown (future reason) | alert | rendered from `unknownStopBody` (default text is Chinese) |
+
+A failed context compaction (`compaction/end` with `error`) raises its own alert; a
+successful one still shows the "context compacted" toast.
+
+`error` notification details come from the provider-neutral `LlmFailure.code`
+(`RATE_LIMIT`, `SERVER`, `TIMEOUT`, `TRANSPORT`, `EMPTY_RESPONSE`,
+`CONTEXT_WINDOW_EXCEEDED`, `QUOTA`, `AUTH`, `MISSING_CREDENTIAL`,
+`INVALID_CREDENTIAL`, `ACCOUNT_TOKEN_INVALID`, `STREAM_CLOSED`, `NO_ADAPTER`,
+`UNKNOWN_MODEL`, `INVALID_CONFIG`, `UNSUPPORTED_OPTION`, `ABORTED`, `UNKNOWN`, …).
+Unlisted codes fall back to the provider message. Retry counts come from the
+durable `llm/retry` events — the framework has no distinct "retries exhausted"
+reason, so the plugin reports the retry count from the last retry record
+(`retrySuffix`, default Chinese).
+
 ## How it works
 
 | Concern | Implementation |
 | --- | --- |
-| Trigger "done" | `agent/status` event with `status: 'idle'` (root agents only) |
-| Trigger "compact" | `session/event` → `compaction/end` (no error) |
+| Trigger "done"/alert/notice | `session/event` → `turn/end` reason cache + `agent/status` `idle` (root agents only) |
+| Trigger "compact" / compaction failure | `session/event` → `compaction/end` |
 | Trigger "question" | `approval/request` waterfall + `tools/execute` for `ask_user_question` |
-| Done/compact toast | WinRT `Windows.UI.Notifications` via `notify.ps1` with hero banner, falls back to `NotifyIcon` balloon |
+| Done/compact/alert/notice toast | WinRT `Windows.UI.Notifications` via `notify.ps1` (entry) + `notify/_common.ps1` (OS plumbing) + `notify/_kinds.ps1` (per-kind presentation), falls back to `NotifyIcon` balloon |
 | Interactive question toast | .NET helper `dsh-toast-question.exe` (reads dropdown/text input and posts the answer back to the host) |
 | Taskbar flash | `EnumWindows` + `FlashWindowEx` (`FLASHW_TRAY \| FLASHW_TIMERNOFG` = 14) |
 | Execution | Fire-and-forget subprocess (`powershell` / `dsh-toast-question.exe`) |
@@ -153,8 +204,8 @@ The plugin registers no service, tool, or settings namespace — a plain consume
 - The native selection dropdown may collapse when the pointer moves onto the popup; if the toast is then dismissed by timeout, the taskbar flash still reminds you.
 - `FlashWindowEx` uses the system's warm-pulse highlight; custom colors are not possible.
 - Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background.
-- Cancelling a running turn also goes `idle`, so a cancelled task still triggers the "done" toast.
-- Notifications are deduplicated per session within `dedupMs` (default 1500 ms).
+- A cancelled turn is reported as "cancelled" (not "task complete"); set `notifyOnCancel: false` to silence it, or `notifyOnError: false` to silence abnormal-stop alerts.
+- Notifications are deduplicated per session within `dedupMs` (default 1500 ms). A second `idle` for an already-reported turn stays quiet.
 - Interactive question toasts require the .NET 10 Desktop Runtime on the machine. If it is missing, the plugin falls back to a plain PowerShell toast that still surfaces the question and appends a hint to install .NET.
 
 ## Development
@@ -163,8 +214,13 @@ The plugin registers no service, tool, or settings namespace — a plain consume
 npm run check     # syntax check
 npm test          # logic smoke test (mocked ctx)
 
-# Show a real toast + taskbar flash:
+# Show a real toast + taskbar flash (Windows PowerShell 5.1: the WinRT toast
+# projection is unavailable in PowerShell 7, which silently degrades to a balloon):
 powershell -NoProfile -File lib/notify.ps1 -Kind done -Title "test" -Body "test"
+
+# Reproduce an abnormal-stop alert:
+powershell -NoProfile -File lib/notify.ps1 -Kind alert -Title "test" -Body "retry exhausted" `
+  -Reason error -Code RATE_LIMIT -Retry 5 -RetryMax 5 -Duration long
 
 # Rebuild the interactive question helper:
 dotnet publish src/DshToastQuestion/DshToastQuestion.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o lib
@@ -175,9 +231,12 @@ dotnet publish src/DshToastQuestion/DshToastQuestion.csproj -c Release -r win-x6
 ```
 dsh-notify-win/
 ├── lib/
-│   ├── index.js               # Host half: event listeners -> subprocess spawn
+│   ├── index.js               # Host half: event listeners -> stop reason -> subprocess spawn
 │   ├── client.js              # Browser-side click-to-focus / answer polling
-│   ├── notify.ps1             # Done/compact toast + taskbar flash
+│   ├── notify.ps1             # Entry: validate kind, run the toast pipeline
+│   ├── notify/
+│   │   ├── _common.ps1        # Identity, protocol, theme, toast/balloon, taskbar flash
+│   │   └── _kinds.ps1         # Per-kind presentation (done/compact/alert/notice/question)
 │   ├── focus-dsh.ps1          # Focus/launch the DSH Edge PWA
 │   ├── focus-dsh.vbs          # Hidden launcher for focus-dsh.ps1
 │   ├── dsh-toast-question.exe # Interactive question toast helper (C#)

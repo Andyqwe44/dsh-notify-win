@@ -1,0 +1,58 @@
+# dsh-notify-win per-kind toast building, dot-sourced by ../notify.ps1.
+#
+# One place decides what each notification class looks like, so adding a stop
+# reason means adding one entry to $script:DshKindStyles plus a caller value -
+# not editing a 400-line script. ASCII only (see _common.ps1).
+#
+# Kinds:
+#   done     normal completion / context compacted  (hero image)
+#   alert    max-tokens, blocked, LLM failure, failed compaction (plain text)
+#   notice   cancelled by the user, parent, or a hook (plain text)
+#   question approval prompt (plain text; interactive questions use the .NET helper)
+#
+# -Reason/-Code/-Retry/-RetryMax are diagnostics from the host plugin: they are
+# echoed in the debug line so a manual run reproduces the exact notification.
+
+$script:DshKindStyles = @{
+  done     = @{ Hero = $true;  Flash = $true }
+  compact  = @{ Hero = $true;  Flash = $true }
+  alert    = @{ Hero = $false; Flash = $true }
+  notice   = @{ Hero = $false; Flash = $true }
+  question = @{ Hero = $false; Flash = $true }
+}
+
+function Get-DshKindStyle {
+  param([string]$Kind)
+  if ($script:DshKindStyles.ContainsKey($Kind)) { return $script:DshKindStyles[$Kind] }
+  # Unknown kind (a future stop reason): render like an alert rather than fail.
+  return $script:DshKindStyles['alert']
+}
+
+function New-DshToastXml {
+  param(
+    [Parameter(Mandatory = $true)][string]$Kind,
+    [Parameter(Mandatory = $true)][string]$Title,
+    [Parameter(Mandatory = $true)][string]$Body,
+    [Parameter(Mandatory = $false)][string]$Launch = '',
+    [Parameter(Mandatory = $false)][string]$Duration = 'short',
+    [Parameter(Mandatory = $false)][string]$HeroUri = ''
+  )
+  $style = Get-DshKindStyle $Kind
+  $durationAttr = if ($Duration -eq 'long') { 'long' } else { 'short' }
+  $launchAttr = ''
+  if ($Launch -ne '') {
+    # The session id is stored host-side and served over HTTP; the toast only
+    # needs to focus/launch the installed app via the dsh-notify protocol.
+    $launchAttr = ' launch="dsh-notify://focus" activationType="protocol"'
+  }
+  $heroXml = ''
+  if ($style.Hero -and $HeroUri -ne '') {
+    $heroXml = '<image placement="hero" src="' + (ConvertTo-DshXmlAttribute $HeroUri) + '"/>'
+  }
+  $xml = '<toast' + $launchAttr + ' duration="' + $durationAttr + '"><visual><binding template="ToastGeneric">' +
+    $heroXml +
+    '<text>' + (ConvertTo-DshXmlText $Title) + '</text>' +
+    '<text>' + (ConvertTo-DshXmlText $Body) + '</text>' +
+    '</binding></visual></toast>'
+  return $xml
+}

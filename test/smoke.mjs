@@ -2,6 +2,9 @@
 // Covers the multi-project guarantee: different sessions ALWAYS each notify
 // (per-session dedup), same-session rapid idle is suppressed, subagents are
 // skipped, waterfall listeners call next(), and project labels resolve.
+// Also covers every live turn-end reason: the toast must say WHY the turn
+// stopped (max-tokens / blocked / LLM failure with retry count / cancelled),
+// while a disposed cancel stays silent and historical markers never toast.
 import plugin from '../lib/index.js'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -166,6 +169,120 @@ const YIELD = () => new Promise((resolve) => setTimeout(resolve, 30))
   }
 
   await rm(tmp, { recursive: true, force: true })
+}
+
+// --- Cases H..N: every live stop reason reaches the right notification. ---
+// A turn/end is always appended before the idle transition, so each case feeds
+// the session/event feed first and then the idle status.
+{
+  const runCase = async (name, events, { idle = true, ...options } = {}) => {
+    const spawns = []
+    const h = {}
+    plugin.apply(makeCtx(spawns, h), options)
+    const session = { id: `sess-${name}`, header: { delegationDepth: 0 } }
+    for (const event of events) h['session/event'](session, event)
+    // Compaction reports on session/event alone; every turn-end case needs the
+    // following idle transition to produce its notification.
+    if (idle) h['agent/status']({ status: 'idle', agent: { session } })
+    await YIELD()
+    return {
+      spawns,
+      kinds: spawns.map((s) => s.argv[s.argv.indexOf('-Kind') + 1]),
+      arg: (flag) => {
+        const at = spawns[0]?.argv.indexOf(flag) ?? -1
+        return at < 0 ? undefined : spawns[0].argv[at + 1]
+      },
+      body: spawns[0]?.argv[spawns[0].argv.indexOf('-Body') + 1],
+    }
+  }
+  const turnEnd = (reason) => ({ type: 'turn/end', data: { turn: 1, reason } })
+  const turnStart = { type: 'turn/start', data: { turn: 1 } }
+
+  // H: output-token ceiling -> alert, not "task complete".
+  {
+    const r = await runCase('H', [turnEnd({ kind: 'max-tokens' })])
+    const ok = r.kinds.length === 1 && r.kinds[0] === 'alert' && r.arg('-Reason') === 'max-tokens'
+    console.log(`Case H max-tokens: kind=${r.kinds[0]} reason=${r.arg('-Reason')} -> ${ok ? 'PASS' : 'FAIL'}`)
+    if (!ok) process.exit(1)
+  }
+
+  // I: retries exhausted -> alert carries the failure code and retry count.
+  {
+    const r = await runCase('I', [
+      turnStart,
+      { type: 'llm/retry', data: { retry: 5, maxRetries: 5, failure: { code: 'RATE_LIMIT', message: 'busy' } } },
+      turnEnd({ kind: 'error', error: { code: 'RATE_LIMIT', message: 'busy' } }),
+    ])
+    const ok = r.kinds[0] === 'alert' && r.arg('-Code') === 'RATE_LIMIT' &&
+      r.arg('-Retry') === '5' && r.arg('-RetryMax') === '5' &&
+      String(r.body).includes('接口限流') && String(r.body).includes('5/5')
+    console.log(`Case I retry-exhausted: code=${r.arg('-Code')} retry=${r.arg('-Retry')}/${r.arg('-RetryMax')} body="${r.body}" -> ${ok ? 'PASS' : 'FAIL'}`)
+    if (!ok) process.exit(1)
+  }
+
+  // J: user cancel -> lightweight "cancelled" notice.
+  {
+    const r = await runCase('J', [turnEnd({ kind: 'aborted', reason: { kind: 'user' } })])
+    const ok = r.kinds.length === 1 && r.kinds[0] === 'notice' && r.arg('-Code') === 'user' &&
+      String(r.body).includes('已取消')
+    console.log(`Case J cancelled: kind=${r.kinds[0]} code=${r.arg('-Code')} body="${r.body}" -> ${ok ? 'PASS' : 'FAIL'}`)
+    if (!ok) process.exit(1)
+  }
+
+  // K: disposal cancel -> silent (no shutdown toast).
+  {
+    const r = await runCase('K', [turnEnd({ kind: 'aborted', reason: { kind: 'disposed' } })])
+    const ok = r.spawns.length === 0
+    console.log(`Case K disposed-cancel silent: ${r.spawns.length} toast(s) -> ${ok ? 'PASS' : 'FAIL'}`)
+    if (!ok) process.exit(1)
+  }
+
+  // L: pre-step blocked -> alert.
+  {
+    const r = await runCase('L', [turnEnd({ kind: 'blocked' })])
+    const ok = r.kinds[0] === 'alert' && r.arg('-Reason') === 'blocked'
+    console.log(`Case L blocked: kind=${r.kinds[0]} reason=${r.arg('-Reason')} -> ${ok ? 'PASS' : 'FAIL'}`)
+    if (!ok) process.exit(1)
+  }
+
+  // M: compaction: success -> compact toast, failure -> alert.
+  {
+    const okRun = await runCase('M1', [
+      { type: 'compaction/end', data: { compactionId: 'c1', turn: null } },
+    ], { idle: false })
+    const failRun = await runCase('M2', [
+      { type: 'compaction/end', data: { compactionId: 'c2', turn: null, error: 'summary rejected' } },
+    ], { idle: false })
+    const ok = okRun.kinds[0] === 'compact' &&
+      failRun.kinds[0] === 'alert' && String(failRun.body).includes('summary rejected')
+    console.log(`Case M compaction success=${okRun.kinds[0]} failure=${failRun.kinds[0]} -> ${ok ? 'PASS' : 'FAIL'}`)
+    if (!ok) process.exit(1)
+  }
+
+  // N: historical markers never toast; an unknown future reason renders as alert.
+  {
+    const marker = await runCase('N1', [turnEnd({ kind: 'interrupted' })])
+    const unknown = await runCase('N2', [turnEnd({ kind: 'budget' })])
+    const ok = marker.spawns.length === 0 &&
+      unknown.kinds[0] === 'alert' && String(unknown.body).includes('budget')
+    console.log(`Case N markers/unknown: interrupted=${marker.spawns.length} unknown=${unknown.kinds[0]} -> ${ok ? 'PASS' : 'FAIL'}`)
+    if (!ok) process.exit(1)
+  }
+
+  // O: a second idle for the same turn does not re-notify.
+  {
+    const spawns = []
+    const h = {}
+    plugin.apply(makeCtx(spawns, h), { dedupMs: 0 })
+    const session = { id: 'sess-O', header: { delegationDepth: 0 } }
+    h['session/event'](session, turnEnd({ kind: 'max-tokens' }))
+    h['agent/status']({ status: 'idle', agent: { session } })
+    h['agent/status']({ status: 'idle', agent: { session } })
+    await YIELD()
+    const ok = spawns.length === 1
+    console.log(`Case O duplicate idle: ${spawns.length} toast(s) -> ${ok ? 'PASS' : 'FAIL'}`)
+    if (!ok) process.exit(1)
+  }
 }
 
 console.log('ALL SMOKE TESTS PASSED')

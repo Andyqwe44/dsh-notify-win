@@ -4,407 +4,67 @@ param(
   [Parameter(Mandatory = $true)][string]$Body,
   [Parameter(Mandatory = $false)][string]$Launch = '',
   [Parameter(Mandatory = $false)][string]$SessionId = '',
-  [Parameter(Mandatory = $false)][string]$QuestionId = '',
-  [Parameter(Mandatory = $false)][string]$QuestionsJson = '',
-  [Parameter(Mandatory = $false)][string]$Duration = 'short'
+  [Parameter(Mandatory = $false)][string]$Duration = 'short',
+  [Parameter(Mandatory = $false)][string]$Reason = '',
+  [Parameter(Mandatory = $false)][string]$Code = '',
+  [Parameter(Mandatory = $false)][string]$Retry = '',
+  [Parameter(Mandatory = $false)][string]$RetryMax = ''
 )
 
+# dsh-notify-win entry point.
+#
+# Responsibilities stay deliberately thin: validate the stop-reason kind,
+# resolve the shared helpers, then run the fixed pipeline
+#   identity/protocol -> toast -> balloon fallback -> taskbar flash.
+# Per-kind presentation lives in notify/_kinds.ps1; OS plumbing lives in
+# notify/_common.ps1. See README "Stop conditions" for the kind vocabulary.
+#
+# -Reason / -Code / -Retry / -RetryMax are diagnostics supplied by the host
+# plugin (turn-end reason, provider-neutral failure code, retry count). They do
+# not change the pipeline; they are echoed so a manual run reproduces the toast.
+
 $ErrorActionPreference = 'Continue'
-$flashOk = $false
-$toastShown = $false
-$balloonShown = $false
-$toastAumid = ''
-$flashTitle = ''
-$flashHwnd = [IntPtr]::Zero
 
-# ---------------------------------------------------------------------------
-# 1. Native Windows 11 toast (WinRT). A monotonic per-process sequence id keeps
-#    every toast in the Win11 notification queue instead of being dropped when
-#    finished tasks arrive close together (multi-project bursts).
-# ---------------------------------------------------------------------------
-$seqPath = Join-Path ([System.IO.Path]::GetTempPath()) 'dsh-notify-tag'
-$seq = 0
-try { $seq = [int](Get-Content $seqPath -ErrorAction SilentlyContinue) } catch { $seq = 0 }
-$seq += 1
-try { Set-Content -Path $seqPath -Value $seq -ErrorAction SilentlyContinue } catch {}
+# lib/ holds the assets; dot-sourced files must not resolve assets from their
+# own directory (lib/notify/).
+$script:DshAssetRoot = $PSScriptRoot
 
-# ---------------------------------------------------------------------------
-# 0. Branded identity self-registration (one-time, idempotent). For an
-#    unpackaged app, the Start Menu shortcut carrying the AppUserModelID is
-#    what makes the toast header show the app name and icon; the registry
-#    DisplayName/IconUri complement it. Runs at most once per user (marker
-#    value on the identity key); failures fall back to the PowerShell
-#    identity for the toast itself.
-# ---------------------------------------------------------------------------
-$brandAumid = 'DeepSeekHarness'
-$regPath = "HKCU:\Software\Classes\AppUserModelID\$brandAumid"
-if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
-try {
-  $regProps = Get-ItemProperty -Path $regPath -ErrorAction Stop
-  $regIcon = Join-Path $PSScriptRoot 'dsh-logo-light.png'
-  if ($regProps.DisplayName -ne 'DeepSeek Harness') { Set-ItemProperty -Path $regPath -Name 'DisplayName' -Value 'DeepSeek Harness' -ErrorAction Stop }
-  if ($regProps.IconUri -ne $regIcon) { Set-ItemProperty -Path $regPath -Name 'IconUri' -Value $regIcon -ErrorAction Stop }
-} catch {
-  # Registry write failed; the toast still falls back below.
+$commonPath = Join-Path $PSScriptRoot 'notify\_common.ps1'
+$kindsPath = Join-Path $PSScriptRoot 'notify\_kinds.ps1'
+if (-not ((Test-Path $commonPath) -and (Test-Path $kindsPath))) {
+  Write-Output ("notify:kind={0};error=helper-files-missing" -f $Kind)
+  exit 3
 }
-$lnkPath = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DeepSeek Harness.lnk'
-$icoPath = Join-Path $PSScriptRoot 'dsh-logo.ico'
-$helperPath = Join-Path $PSScriptRoot 'dsh-toast-question.exe'
-$shortcutTargetOk = $false
-if (Test-Path $lnkPath) {
-  try {
-    $wsProbe = New-Object -ComObject WScript.Shell
-    $scProbe = $wsProbe.CreateShortcut($lnkPath)
-    $shortcutTargetOk = ($scProbe.TargetPath -eq $helperPath)
-  } catch {}
-}
-if ($regProps.ShortcutRegistered -ne '1' -or -not $shortcutTargetOk) {
-  $shortcutOk = $false
-  try {
-    $hasAumid = $false
-    if (Test-Path $lnkPath) {
-      $bytes = [System.IO.File]::ReadAllBytes($lnkPath)
-      $hasAumid = [System.Text.Encoding]::Unicode.GetString($bytes).Contains($brandAumid)
-    }
-    if ((Test-Path $icoPath) -and (Test-Path $helperPath)) {
-      # Recreate the shortcut and set the AppUserModelID extended property
-      # through the property system (the ShellLink COM property store does
-      # not persist it). Retry: the Start Menu file can be transiently
-      # locked by Explorer's indexer. The target must be the toast question
-      # helper so foreground toast activation reaches the running .NET helper.
-      $ws = New-Object -ComObject WScript.Shell
-      $sc = $ws.CreateShortcut($lnkPath)
-      $sc.TargetPath = $helperPath
-      $sc.Arguments = ''
-      $sc.IconLocation = "$icoPath,0"
-      $sc.Description = 'DeepSeek Harness notifications'
-      $sc.WindowStyle = 7
-      $sc.Save()
-      Add-Type @'
-using System;
-using System.Runtime.InteropServices;
+. $commonPath
+. $kindsPath
 
-public static class DshToastIdentity {
-  [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99")]
-  public interface IPropertyStore {
-    [PreserveSig] int GetCount(out uint cProps);
-    [PreserveSig] int GetAt(uint iProp, out PROPERTYKEY pkey);
-    [PreserveSig] int GetValue(ref PROPERTYKEY key, out PROPVARIANT pv);
-    [PreserveSig] int SetValue(ref PROPERTYKEY key, ref PROPVARIANT pv);
-    [PreserveSig] int Commit();
-  }
-
-  [StructLayout(LayoutKind.Sequential, Pack = 4)]
-  public struct PROPERTYKEY { public Guid fmtid; public uint pid; }
-
-  [StructLayout(LayoutKind.Explicit)]
-  public struct PROPVARIANT {
-    [FieldOffset(0)] public ushort vt;
-    [FieldOffset(8)] public IntPtr pwszVal;
-  }
-
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-  static extern int SHGetPropertyStoreFromParsingName(string pszPath, IntPtr pbc, uint flags, ref Guid riid, out IntPtr ppv);
-
-  public static void Set(string lnkPath, string appId) {
-    var iid = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
-    IntPtr ppv;
-    int hr = SHGetPropertyStoreFromParsingName(lnkPath, IntPtr.Zero, 2, ref iid, out ppv);
-    if (hr != 0) throw new COMException("property store open failed: 0x" + hr.ToString("X8"), hr);
-    var props = (IPropertyStore)Marshal.GetObjectForIUnknown(ppv);
-    try {
-      var key = new PROPERTYKEY();
-      key.fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
-      key.pid = 5;
-      var pv = new PROPVARIANT();
-      pv.vt = 31;
-      pv.pwszVal = Marshal.StringToCoTaskMemUni(appId);
-      try {
-        hr = props.SetValue(ref key, ref pv);
-        if (hr != 0) throw new COMException("SetValue failed: 0x" + hr.ToString("X8"), hr);
-        hr = props.Commit();
-        if (hr != 0) throw new COMException("Commit failed: 0x" + hr.ToString("X8"), hr);
-      } finally {
-        Marshal.FreeCoTaskMem(pv.pwszVal);
-      }
-    } finally {
-      Marshal.ReleaseComObject(props);
-      Marshal.Release(ppv);
-    }
-  }
-}
-'@
-      $attempt = 0
-      while (-not $shortcutOk -and $attempt -lt 3) {
-        $attempt++
-        try {
-          [DshToastIdentity]::Set($lnkPath, $brandAumid)
-          $shortcutOk = $true
-        } catch {
-          Start-Sleep -Milliseconds 400
-        }
-      }
-    } elseif ($hasAumid -and $shortcutTargetOk) {
-      $shortcutOk = $true
-    }
-  } catch {
-    $shortcutOk = $false
-  }
-  if ($shortcutOk) {
-    try { Set-ItemProperty -Path $regPath -Name 'ShortcutRegistered' -Value '1' -ErrorAction Stop } catch {}
-  }
-}
-
-# ---------------------------------------------------------------------------
-# 0b. dsh-notify:// protocol: clicking a toast focuses/launches the installed
-#     DeepSeek Harness Edge PWA (the browser-side client then reads the
-#     pending session from the host HTTP route). Idempotent, best-effort.
-# ---------------------------------------------------------------------------
-$protoName = 'dsh-notify'
-$protoRoot = "HKCU:\Software\Classes\$protoName"
-try {
-  if (-not (Test-Path $protoRoot)) { New-Item -Path $protoRoot -Force | Out-Null }
-  Set-ItemProperty -Path $protoRoot -Name '(default)' -Value 'URL:dsh-notify Protocol' -ErrorAction Stop
-  Set-ItemProperty -Path $protoRoot -Name 'URL Protocol' -Value '' -ErrorAction Stop
-  $protoCmd = "$protoRoot\shell\open\command"
-  New-Item -Path $protoCmd -Force | Out-Null
-  # Find the Edge-installed DSH PWA (skip the toast identity AUMID we register above).
-  $pwaAumid = $null
-  try {
-    $pwa = Get-StartApps | Where-Object {
-      $_.Name -eq 'DeepSeek Harness' -and $_.AppID -like '*!App' -and $_.AppID -ne $brandAumid
-    } | Select-Object -First 1
-    if ($pwa) { $pwaAumid = $pwa.AppID }
-  } catch {}
-  $focusScript = Join-Path $PSScriptRoot 'focus-dsh.ps1'
-  $focusVbs = Join-Path $PSScriptRoot 'focus-dsh.vbs'
-  if (Test-Path $focusVbs) {
-    # wscript runs the VBS hidden, which launches PowerShell hidden too — no
-    # console flash when the toast is clicked. %1 is the invoked dsh-notify URI.
-    $handler = "wscript.exe `"$focusVbs`" `"%1`""
-    Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
-  } elseif (Test-Path $focusScript) {
-    $handler = "powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -File `"$focusScript`""
-    Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
-  } elseif ($pwaAumid) {
-    $handler = "cmd.exe /c start `"`" shell:AppsFolder\$pwaAumid"
-    Set-ItemProperty -Path $protoCmd -Name '(default)' -Value $handler -ErrorAction Stop
-  }
-} catch {
-  # Protocol registration failed; clicking the toast simply dismisses it.
-}
-
-# If the DSH window is already focused the user is already looking at DSH —
-# skip the toast entirely. The UI will surface any pending question or
-# approval directly, so a toast would only be noise.
-$dshFocused = $false
-try {
-  Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public static class DshFocusCheck {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr IntPtr, StringBuilder sb, int max);
-}
-'@
-  $fg = [DshFocusCheck]::GetForegroundWindow()
-  if ($fg -ne [IntPtr]::Zero) {
-    $sb = New-Object System.Text.StringBuilder 512
-    [void][DshFocusCheck]::GetWindowText($fg, $sb, $sb.Capacity)
-    if ($sb.ToString() -like '*DeepSeek Harness*') { $dshFocused = $true }
-  }
-} catch { }
-
-if ($dshFocused) {
-  Write-Output "notify:kind=$Kind;skipped;reason=dsh-focused"
+# If the DSH window is already focused the user is already looking at DSH - skip
+# the toast entirely. The UI surfaces pending questions/approvals directly, so a
+# toast would only be noise.
+if (Test-DshWindowFocused) {
+  Write-Output ("notify:kind={0};reason={1};code={2};skipped;why=dsh-focused" -f $Kind, $Reason, $Code)
   exit 0
 }
 
-try {
-  [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-  [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-  $titleXml = $Title -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
-  $bodyXml = $Body -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
-  # DeepSeek Harness logo as the toast app logo (overrides the PowerShell
-  # identity's icon). The favicon is monochrome - black on light, white on
-  # dark - and toast rendering does not apply CSS media queries, so the
-  # variant is chosen here from the OS theme preference.
-  $lightTheme = $true
-  try {
-    $theme = Get-ItemPropertyValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'AppsUseLightTheme' -ErrorAction Stop
-    $lightTheme = $theme -ne 0
-  } catch {
-    $lightTheme = $true
-  }
-  $heroFile = Join-Path $PSScriptRoot $(if ($lightTheme) { 'dsh-hero-light.png' } else { 'dsh-hero-dark.png' })
-  $heroUri = ''
-  if (Test-Path $heroFile) {
-    $heroUri = 'file:///' + ($heroFile -replace '\\', '/')
-  }
-  $launchAttr = ''
-  if ($Launch -ne '') {
-    # The session id is stored host-side and served over HTTP; the toast only
-    # needs to focus/launch the installed Edge PWA via the dsh-notify protocol.
-    $launchAttr = ' launch="dsh-notify://focus" activationType="protocol"'
-  }
-  $actionsXml = ''
-  if ($QuestionsJson -ne '' -and $SessionId -ne '' -and $QuestionId -ne '') {
-    try {
-      $questionsJson = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($QuestionsJson))
-      $questions = $questionsJson | ConvertFrom-Json
-      $question = $questions[0]
-      if ($null -ne $question) {
-        $xmlEsc = { param($s) return ([string]$s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;') }
-        $sb = New-Object System.Text.StringBuilder
-        [void]$sb.Append('<input id="custom" type="text" placeHolderContent="Custom answer"/>')
-        foreach ($option in $question.options) {
-          $desc = if ($null -ne $option.description) { [string]$option.description } else { '' }
-          $content = if ($desc -ne '') { [string]$option.label + ' - ' + $desc } else { [string]$option.label }
-          $contentXml = & $xmlEsc $content
-          $tooltipAttr = if ($desc -ne '') { ' hint-toolTip="' + (& $xmlEsc $desc) + '"' } else { '' }
-          $uri = 'dsh-notify://answer?session=' + [uri]::EscapeDataString($SessionId) +
-            '&qid=' + [uri]::EscapeDataString($QuestionId) +
-            '&option=' + [uri]::EscapeDataString([string]$option.label) + '&custom='
-          $uriXml = & $xmlEsc $uri
-          [void]$sb.Append('<action content="' + $contentXml + '" arguments="' + $uriXml + '" activationType="protocol"' + $tooltipAttr + '/>')
-        }
-        $submitUri = 'dsh-notify://answer?session=' + [uri]::EscapeDataString($SessionId) +
-          '&qid=' + [uri]::EscapeDataString($QuestionId) +
-          '&option=&custom={custom}'
-        $submitUriXml = & $xmlEsc $submitUri
-        [void]$sb.Append('<action content="Send" arguments="' + $submitUriXml + '" activationType="protocol"/>')
-        $actionsXml = '<actions>' + $sb.ToString() + '</actions>'
-      }
-    } catch {
-      $actionsXml = ''
-    }
-  }
-  $xml = '<toast' + $launchAttr + ' duration="' + $Duration + '"><visual><binding template="ToastGeneric">' +
-    $(if ($heroUri -ne '') { '<image placement="hero" src="' + $heroUri + '"/>' } else { '' }) +
-    '<text>' + $titleXml + '</text>' +
-    '<text>' + $bodyXml + '</text>' +
-    '</binding></visual>' + $actionsXml + '</toast>'
-  $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
-  $doc.LoadXml($xml)
-  $toast = New-Object Windows.UI.Notifications.ToastNotification $doc
-  $toast.Tag = 'dsh-notify-' + $seq
-  # The self-registered DeepSeekHarness AUMID can be silently dropped by
-  # Windows even though Show() does not throw. Prefer the real installed Edge
-  # PWA AUMID (DeepSeek Harness app), which is known to display; fall back to
-  # the system-registered PowerShell identity.
-  $pwaAumid = $null
-  try {
-    $pwaAumid = (Get-StartApps | Where-Object {
-      $_.Name -eq 'DeepSeek Harness' -and $_.AppID -like '*!App' -and $_.AppID -ne $brandAumid
-    } | Select-Object -First 1).AppID
-  } catch {}
-  $notifier = $null
-  $toastAumid = ''
-  $toastCandidates = @()
-  if ($pwaAumid) { $toastCandidates += ,@($pwaAumid, 'pwa') }
-  $toastCandidates += ,@('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe', 'powershell')
-  foreach ($candidate in $toastCandidates) {
-    $appId = $candidate[0]
-    try {
-      $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId)
-      $notifier.Show($toast)
-      $toastAumid = $appId
-      break
-    } catch {
-      $notifier = $null
-    }
-  }
-  $toastShown = $null -ne $notifier
-} catch {
-  $toastShown = $false
+# One-time (idempotent) environment setup. Each stage is best-effort: a failure
+# must never stop the toast, the balloon fallback, or the taskbar flash.
+try { Initialize-DshToastIdentity } catch {}
+try { Register-DshNotifyProtocol } catch {}
+
+$heroUri = ''
+try { $heroUri = Get-DshHeroUri } catch { $heroUri = '' }
+
+$xml = New-DshToastXml -Kind $Kind -Title $Title -Body $Body -Launch $Launch -Duration $Duration -HeroUri $heroUri
+$toast = Show-DshToast -Xml $xml -Tag ('dsh-notify-' + (Get-DshToastSequence))
+
+# Classic NotifyIcon balloon only when the WinRT toast could not be shown.
+$balloonShown = $false
+if (-not $toast.Shown) {
+  try { $balloonShown = Show-DshBalloon -Title $Title -Body $Body } catch { $balloonShown = $false }
 }
 
-# ---------------------------------------------------------------------------
-# 2. Fallback: classic NotifyIcon balloon (only when the toast failed).
-# ---------------------------------------------------------------------------
-if (-not $toastShown) {
-  try {
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    $ni = New-Object System.Windows.Forms.NotifyIcon
-    $ni.Icon = [System.Drawing.SystemIcons]::Information
-    $ni.Visible = $true
-    $ni.BalloonTipTitle = $Title
-    $ni.BalloonTipText = $Body
-    $ni.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
-    $ni.ShowBalloonTip(8000)
-    $balloonShown = $true
-    Start-Sleep -Milliseconds 8500
-    $ni.Dispose()
-  } catch {
-    $balloonShown = $false
-  }
-}
+$flash = [pscustomobject]@{ Ok = $false; Title = ''; Hwnd = [IntPtr]::Zero }
+try { $flash = Show-DshTaskbarFlash } catch {}
 
-# ---------------------------------------------------------------------------
-# 3. Taskbar flash: FlashWindowEx on the DeepSeek Harness top-level window,
-#    FLASHW_ALL | FLASHW_TIMERNOFG = 15 (keeps flashing until focused).
-# ---------------------------------------------------------------------------
-try {
-  Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public static class DshFlash {
-  public delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder sb, int max);
-  [DllImport("user32.dll")] public static extern bool FlashWindowEx(ref FLASHWINFO info);
-  [StructLayout(LayoutKind.Sequential)]
-  public struct FLASHWINFO {
-    public uint cbSize; public IntPtr hwnd; public uint dwFlags; public uint uCount; public uint dwTimeout;
-  }
-}
-'@
-  $script:found = [IntPtr]::Zero
-  $script:foundTitle = ''
-  $callback = [DshFlash+EnumProc]{
-    param($h, $l)
-    if ([DshFlash]::IsWindowVisible($h)) {
-      $sb = New-Object System.Text.StringBuilder 512
-      [void][DshFlash]::GetWindowText($h, $sb, $sb.Capacity)
-      $title = $sb.ToString()
-      # Prefer the actual DSH PWA window: its title ends with
-      # "— DeepSeek Harness". Other Edge windows can contain the repo
-      # description "DeepSeek Harness" and must not steal the flash.
-      if ($title -match '—\s*DeepSeek Harness\s*$' -or $title -like '*— DeepSeek Harness*') {
-        $script:found = $h
-        $script:foundTitle = $title
-        return $false
-      }
-      # Fallback broad match (old behaviour): first visible window whose title
-      # mentions the harness name/port.
-      if ($script:found -eq [IntPtr]::Zero -and
-          ($title -like 'DeepSeek*' -or $title -like '*3080* - DeepSeek*' -or $title -like '*:3080*' -or $title -like '*DeepSeek Harness*')) {
-        $script:found = $h
-        $script:foundTitle = $title
-      }
-    }
-    return $true
-  }
-  [void][DshFlash]::EnumWindows($callback, [IntPtr]::Zero)
-  if ($script:found -ne [IntPtr]::Zero) {
-    $flashHwnd = $script:found
-    $flashTitle = $script:foundTitle
-    $info = New-Object DshFlash+FLASHWINFO
-    $info.cbSize = [Runtime.InteropServices.Marshal]::SizeOf([type][DshFlash+FLASHWINFO])
-    $info.hwnd = $script:found
-    $info.dwFlags = 14   # FLASHW_TRAY(2) | FLASHW_TIMERNOFG(12) — taskbar button only
-    $info.uCount = 0     # flash until the window comes to the foreground
-    $info.dwTimeout = 0
-    [void][DshFlash]::FlashWindowEx([ref]$info)
-    $flashOk = $true
-  }
-} catch {
-  $flashOk = $false
-}
-
-$debugLine = "notify:kind={0};toast={1};balloon={2};flash={3};aumid={4};flashTitle={5};flashHwnd={6}" -f $Kind, $toastShown, $balloonShown, $flashOk, $toastAumid, $flashTitle, $flashHwnd
+$debugLine = ("notify:kind={0};reason={1};code={2};retry={3}/{4};toast={5};balloon={6};flash={7};aumid={8};flashTitle={9};flashHwnd={10}" -f $Kind, $Reason, $Code, $Retry, $RetryMax, $toast.Shown, $balloonShown, $flash.Ok, $toast.Aumid, $flash.Title, $flash.Hwnd)
 Write-Output $debugLine
