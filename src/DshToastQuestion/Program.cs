@@ -72,6 +72,12 @@ static class Program
 
     const string Aumid = "DeepSeekHarness";
 
+    // Where the toast answer is POSTed. The Web GUI picks its port at startup, so
+    // the host passes it via --url; 3080 is only a last-resort default for a
+    // manual run (it used to be hardcoded, which made every Send fail whenever
+    // the GUI was on another port).
+    static string AnswerUrl = "http://127.0.0.1:3080/dsh-notify/answer";
+
     // Taskbar flash control. When a question toast times out we start a slow
     // re-pulse (every ~3 s) so the DSH taskbar button stays gently highlighted
     // without the rapid continuous blinking that FLASHW_TIMERNOFG would cause.
@@ -110,29 +116,6 @@ static class Program
     static string XmlEscape(string s) =>
         s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
 
-    // Hero banner for the toast that actually demands a decision. The light/dark
-    // variant follows the system app theme; a missing asset degrades to no image.
-    static string HeroImageXml()
-    {
-        try
-        {
-            bool dark = true;
-            using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"))
-            {
-                if (key?.GetValue("AppsUseLightTheme") is int light) dark = light == 0;
-            }
-            string name = dark ? "dsh-hero-dark.png" : "dsh-hero-light.png";
-            string path = Path.Combine(AppContext.BaseDirectory, name);
-            if (!File.Exists(path)) return "";
-            return "<image placement=\"hero\" src=\"" + XmlEscape(new Uri(path).AbsoluteUri) + "\"/>";
-        }
-        catch
-        {
-            return "";
-        }
-    }
-
     [STAThread]
     static async Task<int> Main(string[] args)
     {
@@ -141,6 +124,11 @@ static class Program
         string body = GetArg(args, "--body");
         string questionsB64 = GetArg(args, "--questions");
         string duration = GetArg(args, "--duration");
+        string url = GetArg(args, "--url");
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            AnswerUrl = url.TrimEnd('/') + "/dsh-notify/answer";
+        }
 
         // Quick liveness probe: exit 0 if the .NET Desktop Runtime can load
         // this assembly. The host plugin uses it to decide whether to spawn
@@ -167,6 +155,16 @@ static class Program
             {
                 var e = args as ToastActivatedEventArgs;
                 if (e == null) return;
+
+                // A click on the toast BODY carries no action arguments. Windows
+                // dismisses the toast on that click, so re-open the same question
+                // instead of treating it as an empty submission.
+                if (string.IsNullOrEmpty(e.Arguments))
+                {
+                    await Task.Delay(700);
+                    ShowQuestion(questions[current], title, body, Handler, duration);
+                    return;
+                }
 
                 if (string.Equals(e.Arguments, "cancel", StringComparison.OrdinalIgnoreCase))
                 {
@@ -214,7 +212,12 @@ static class Program
                     }
                     if (selected.Count == 0 && string.IsNullOrWhiteSpace(custom))
                     {
+                        // The toast is already gone: put the question back so the
+                        // user can still answer instead of being stranded with a
+                        // hint and a dead tool call.
                         ShowToast("请选择答案", "dsh-none");
+                        await Task.Delay(1200);
+                        ShowQuestion(questions[current], title, body, Handler, duration);
                         return;
                     }
                     answers.Add(new AnswerItem
@@ -241,6 +244,8 @@ static class Program
                         if (selectedLabel.Length == 0)
                         {
                             ShowToast("请选择答案", "dsh-none");
+                            await Task.Delay(1200);
+                            ShowQuestion(questions[current], title, body, Handler, duration);
                             return;
                         }
                         answers.Add(new AnswerItem
@@ -303,11 +308,9 @@ static class Program
         // duration is a toast XML attribute (short ~5 s, long ~25 s). Only an
         // explicit 'long' opts in, matching the documented config default.
         string durationAttr = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase) ? "long" : "short";
-        // A question is the one notification that genuinely needs a human
-        // decision, so it keeps the hero banner. Ordinary results carry only the
-        // app badge, which is why notify.ps1 drops the hero for every other kind.
+        // Badge-only, like every other kind: the app icon in the header is the
+        // only image, so the question toast stays compact next to the dropdown.
         sb.Append("<toast duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\">")
-          .Append(HeroImageXml())
           .Append("<text>")
           .Append(XmlEscape(toastTitle))
           .Append("</text><text>")
@@ -520,7 +523,7 @@ static class Program
             using var http = new HttpClient();
             http.Timeout = TimeSpan.FromSeconds(5);
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var resp = await http.PostAsync("http://127.0.0.1:3080/dsh-notify/answer", content);
+            using var resp = await http.PostAsync(AnswerUrl, content);
             return resp.IsSuccessStatusCode;
         }
         catch
@@ -537,7 +540,7 @@ static class Program
             using var http = new HttpClient();
             http.Timeout = TimeSpan.FromSeconds(5);
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var resp = await http.PostAsync("http://127.0.0.1:3080/dsh-notify/answer", content);
+            using var resp = await http.PostAsync(AnswerUrl, content);
             return resp.IsSuccessStatusCode;
         }
         catch

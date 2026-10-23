@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-10-23
+
+### Added
+
+- **Answering from the toast now reaches the agent.** Choosing an option in the
+  interactive question toast and pressing Send fills and submits the official
+  question card inside DSH, so the pending `ask_user_question` call returns at
+  once instead of waiting for a click in the window.
+
+### Fixed
+
+- The interactive helper posts its answer to the advertised Web GUI origin
+  passed as `--url`; it was hardcoded to port 3080, so every Send failed
+  whenever the GUI listened on another port.
+- Clicking the toast body no longer strands the question: the toast re-opens.
+  Submitting with nothing selected re-opens it too, instead of leaving only a
+  hint behind.
+
+### Changed
+
+- The question toast honours `--duration` (`short` / `long`).
+
+### Known limitation
+
+- The toast drives the official card through the DOM (its option button, then
+  its submit button). A third-party client plugin is registered after the
+  official answerer, so it can never win the `user-questions/request` waterfall
+  and must reuse the card instead. A host-side API for answering a question
+  would replace this.
+
 ## [0.3.2] - 2026-10-23
 
 ### Changed
@@ -14,9 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   identity, so the toast header read "Windows PowerShell" with the PowerShell
   icon. The system identities stay as fallbacks when the branded notifier
   cannot be created.
-- **Hero banners are reserved for a decision.** Only the interactive question
-  toast shows the large image; `done`, `compact`, `alert` and `notice` render
-  badge-only, so the banner keeps its meaning instead of becoming wallpaper.
+- **No hero banner anywhere.** Every kind — including the interactive question
+  toast — renders badge-only, so the header icon is the only image and the toast
+  stays compact. `_kinds.ps1` keeps the `Hero` flag as the single switch if a
+  banner is ever wanted again.
 
 ### Fixed
 

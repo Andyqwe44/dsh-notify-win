@@ -37,7 +37,11 @@ function Initialize-DshToastIdentity {
     # Registry write failed; the toast still falls back to another identity.
     $regProps = $null
   }
-  $lnkPath = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DeepSeek Harness.lnk'
+  # Distinct from the installed app's own Start Menu entry ("DeepSeek Harness"):
+  # two entries with the same name made the launcher and search look like a
+  # duplicate install. The AUMID is what matters for the toast; the file name is
+  # only what the Start Menu shows.
+  $lnkPath = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\DeepSeek Harness Notify.lnk'
   $icoPath = Get-DshAssetPath 'dsh-logo.ico'
   $helperPath = Get-DshAssetPath 'dsh-toast-question.exe'
   $shortcutTargetOk = $false

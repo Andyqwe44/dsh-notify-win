@@ -39,8 +39,9 @@ English | [中文](README.zh.md)
 - ❓ Triggers when **your input is needed** (approval / `ask_user_question`)
 - 📋 **Single-select question toast**: native dropdown with up to 5 options + “自定义答案” (custom answer) text input + Cancel / Send
 - ✅ **Post-action confirmation**: once the host accepts your answer a small “✓ 已发送” toast follows; cancelling shows “已取消”, a failed round trip shows “✗ 发送失败，请重试”, and submitting with nothing selected now says “请选择答案”
+- 🖱️ **Answering from the toast reaches the agent**: the chosen option is applied to the official question card and submitted, so the blocked `ask_user_question` call returns immediately
 - ⏰ **Timeout flash fallback**: if an interactive toast is ignored and dismissed by the system timeout, the taskbar flashes so the pending question is not missed
-- 🖼️ Hero banner **only when a decision is needed** (interactive questions); ordinary results carry just the app badge
+- 🖼️ Badge-only toasts: no hero banner in any kind — just the app icon in the header, so notifications stay compact
 - 🪪 Toasts are attributed to **DeepSeek Harness** with its own icon (registered AppUserModelID), never to “Windows PowerShell”
 - 🚀 Fire-and-forget: no service, no model approval, no settings namespace
 
