@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The answer receipt now shows the model's **first line** instead of its first
+  sentence: the line is filled to the toast width and cut with `…` (one
+  full-width cell) when it is longer. The receipt fires when that line ends or
+  once it is already wider than the toast, so a line without a break still
+  appears; a turn that ends on a short line still reports the line.
+- The answer flow is now two toasts only: the question, then the model's first
+  line. Submitting dismisses the question toast; the “⏳ 已提交，等待 DSH
+  确认…” and “✓ agent 已收到并回应” stages are gone, and the receipt carries
+  no title line. A turn with no visible text shows nothing instead of a
+  delivery claim.
+
 ## [0.5.0] - 2026-10-23
 
 ### Added

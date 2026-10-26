@@ -3,7 +3,7 @@
 // The fake helper speaks the real stdio JSON protocol, so this covers the whole
 // host half without a Windows toast: question dispatch, parked answer, the
 // browser pickup, the tool-result comparison, and the two confirmation stages
-// (delivered -> spoken with the model's first sentence).
+// (tool result -> spoken with the model's first line; no delivered toast).
 import { PassThrough } from 'node:stream'
 import plugin from '../lib/index.js'
 
@@ -139,7 +139,7 @@ const QUESTIONS = [{
   options: [{ label: 'A' }, { label: 'B' }],
 }]
 
-// --- Happy path: answer -> parked -> delivered -> spoken -------------------
+// --- Happy path: answer -> parked -> spoken (no delivered toast) ----------
 {
   const harness = createHarness()
   await harness.start()
@@ -172,20 +172,22 @@ const QUESTIONS = [{
 
   resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['B'] }] } })
   await tool
-  const delivered = await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'delivered'))
-  assert(delivered.detail === 'B', 'tool result confirms delivery', delivered.detail)
+  assert(
+    harness.helper().writes.every((message) => message.state !== 'delivered'),
+    'no intermediate delivered toast is shown',
+  )
 
-  // The model starts answering the question: first sentence is the receipt.
+  // The model starts answering the question: its first line is the receipt.
   harness.handlers['agent/assistant-stream']({
     agent: { session: { id: 'S1' } },
     frame: { type: 'chunk', chunk: { type: 'text-delta', index: 0, text: '好的，我' } },
   })
   harness.handlers['agent/assistant-stream']({
     agent: { session: { id: 'S1' } },
-    frame: { type: 'chunk', chunk: { type: 'text-delta', index: 0, text: '按 B 处理了。' } },
+    frame: { type: 'chunk', chunk: { type: 'text-delta', index: 0, text: '按 B 处理了。\n' } },
   })
   const spoken = await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'spoken'))
-  assert(spoken.detail === '好的，我按 B 处理了。', 'first model sentence becomes the receipt', spoken.detail)
+  assert(spoken.detail === '好的，我按 B 处理了。', 'the first model line becomes the receipt', spoken.detail)
 
   harness.dispose()
   await until(() => harness.helper().writes.some((message) => message.op === 'shutdown'))
@@ -212,6 +214,67 @@ const QUESTIONS = [{
   harness.dispose()
 }
 
+// --- Long line: filled to the toast width, cut with "…" -------------------
+{
+  const harness = createHarness()
+  await harness.start()
+  let resolveTool
+  const tool = harness.handlers['tools/execute'](
+    askExec('S5', 'call-5', QUESTIONS),
+    () => new Promise((resolve) => { resolveTool = resolve }),
+  )
+  const question = await until(() => harness.helper().writes.find((message) => message.op === 'question'))
+  harness.helper().emit({ ev: 'answer', id: question.id, sessionId: 'S5', answers: [{ id: 'Q1', selected: ['A'] }] })
+  await callRoute(harness.routes, '/dsh-notify/pending-answer', { url: '/dsh-notify/pending-answer?latest=1' })
+  await callRoute(harness.routes, '/dsh-notify/answer-ack', { method: 'POST', body: { id: question.id, ok: true } })
+  resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['A'] }] } })
+  await tool
+
+  // A single line without any break: the toast fires once the line is wider
+  // than it can show, keeping only what fits and marking the cut.
+  const long = '这是模型返回的一整段话'.repeat(12)
+  harness.handlers['agent/assistant-stream']({
+    agent: { session: { id: 'S5' } },
+    frame: { type: 'chunk', chunk: { type: 'text-delta', index: 0, text: long } },
+  })
+  const spoken = await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'spoken'))
+  const expected = `${Array.from(long).slice(0, 20).join('')}…`
+  assert(spoken.detail === expected, 'an over-long line is cut to one toast line with an ellipsis', spoken.detail)
+  harness.dispose()
+}
+
+// --- Short line without a newline: reported when the turn ends ------------
+{
+  const harness = createHarness()
+  await harness.start()
+  let resolveTool
+  const tool = harness.handlers['tools/execute'](
+    askExec('S6', 'call-6', QUESTIONS),
+    () => new Promise((resolve) => { resolveTool = resolve }),
+  )
+  const question = await until(() => harness.helper().writes.find((message) => message.op === 'question'))
+  harness.helper().emit({ ev: 'answer', id: question.id, sessionId: 'S6', answers: [{ id: 'Q1', selected: ['A'] }] })
+  await callRoute(harness.routes, '/dsh-notify/pending-answer', { url: '/dsh-notify/pending-answer?latest=1' })
+  await callRoute(harness.routes, '/dsh-notify/answer-ack', { method: 'POST', body: { id: question.id, ok: true } })
+  resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['A'] }] } })
+  await tool
+  harness.handlers['agent/assistant-stream']({
+    agent: { session: { id: 'S6' } },
+    frame: { type: 'chunk', chunk: { type: 'text-delta', index: 0, text: '收到。' } },
+  })
+  assert(
+    harness.helper().writes.every((message) => message.state !== 'spoken'),
+    'a short line waits for a line break or the turn end',
+  )
+  harness.handlers['session/event'](
+    { id: 'S6', header: { delegationDepth: 0 } },
+    { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+  )
+  const spoken = await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'spoken'))
+  assert(spoken.detail === '收到。', 'a short line is the receipt when the turn ends', spoken.detail)
+  harness.dispose()
+}
+
 // --- No model text: the turn ends after the tool result -------------------
 {
   const harness = createHarness()
@@ -226,13 +289,14 @@ const QUESTIONS = [{
   await callRoute(harness.routes, '/dsh-notify/pending-answer', { url: '/dsh-notify/pending-answer?latest=1' })
   resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['A'] }] } })
   await tool
-  await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'delivered'))
   harness.handlers['session/event'](
     { id: 'S3', header: { delegationDepth: 0 } },
     { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
   )
-  const nospeech = await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'nospeech'))
-  assert(nospeech !== undefined, 'a turn ending without text reports no text reply')
+  assert(
+    harness.helper().writes.every((message) => message.op !== 'status'),
+    'a turn with no model text stays silent — no receipt is invented',
+  )
   harness.dispose()
 }
 

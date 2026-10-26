@@ -667,9 +667,9 @@ static class Program
     }
 
     /// <summary>
-    /// Hand the batch to the host. The toast only says "submitted, waiting for
-    /// DSH" here — the "delivered" claim is made by the host, once it has
-    /// actually seen the answer reach the agent.
+    /// Hand the batch to the host and take the question toast down again: the
+    /// only thing shown after submitting is the model's own first line, which
+    /// the host sends as the "spoken" status.
     /// </summary>
     static void Submit(QuestionFlow flow)
     {
@@ -691,7 +691,6 @@ static class Program
                 .ToList(),
         });
 
-        ShowStatus(flow, new[] { "⏳ 已提交，等待 DSH 确认…" }, "short");
         RemoveToast(flow.QuestionTag, QuestionGroup);
         Log("answer submitted: " + flow.Id);
     }
@@ -754,30 +753,10 @@ static class Program
         string? detail = message.Detail;
         switch (message.State)
         {
-            case "pending":
-                ShowStatus(flow, new[] { "⏳ 已提交，等待 DSH 确认…" }, "short");
-                break;
-            case "delivered":
-                ShowStatus(flow, new[]
-                {
-                    "✓ 回答已送达 agent",
-                    string.IsNullOrEmpty(detail) ? "agent 已收到你的选择。" : "你选择了：" + detail,
-                }, "short");
-                break;
+            // Exactly one receipt is shown — the model's own first line, on its
+            // own. There is no pending, "delivered" or invented fallback toast.
             case "spoken":
-                ShowStatus(flow, new[]
-                {
-                    "✓ agent 已收到并回应",
-                    "“" + (detail ?? "") + "”",
-                }, "long");
-                FinishFlow(flow);
-                break;
-            case "nospeech":
-                ShowStatus(flow, new[]
-                {
-                    "✓ 回答已送达 agent",
-                    "本轮没有文本回复，可继续在 DSH 中查看。",
-                }, "short");
+                ShowStatus(flow, new[] { detail ?? "" }, "long");
                 FinishFlow(flow);
                 break;
             case "timeout":
@@ -838,7 +817,10 @@ static class Program
             foreach (var line in lines)
             {
                 if (line.Length == 0) continue;
-                sb.Append("<text>").Append(XmlEscape(line)).Append("</text>");
+                // One line per text element: the receipt line is already cut to
+                // the toast width, and this keeps an over-wide line from wrapping
+                // into a second row instead of being clipped.
+                sb.Append("<text hint-maxLines=\"1\">").Append(XmlEscape(line)).Append("</text>");
             }
             sb.Append("</binding></visual></toast>");
 
