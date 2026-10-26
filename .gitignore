@@ -12,3 +12,6 @@ coverage/
 dist/
 src/**/bin/
 src/**/obj/
+# Built toast helper (~25 MB): publish src/DshToastQuestion and copy the
+# resulting dsh-toast-question.exe here locally; never commit it.
+lib/*.exe
