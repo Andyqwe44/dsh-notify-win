@@ -78,6 +78,10 @@ check(
 )
 
 check(/case "notify":/.test(source), 'helper handles the non-interactive notify op')
+check(
+  (source.match(/toast\.Activated \+=/g) ?? []).length >= 3,
+  'notify, question and status toasts all handle activation',
+)
 check(/static bool ShowToast/.test(source), 'helper owns toast delivery')
 check(/static void EnsureToastIdentity/.test(source), 'helper owns the toast identity')
 check(/static void FocusDsh/.test(source), 'helper owns click-to-focus')

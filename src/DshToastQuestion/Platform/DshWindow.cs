@@ -80,10 +80,12 @@ static partial class Program
     static void ForceForeground(IntPtr hwnd)
     {
         if (GetForegroundWindow() == hwnd) return;
-        if (SetForegroundWindow(hwnd)) return;
+        SetForegroundWindow(hwnd);
+        if (GetForegroundWindow() == hwnd) return;
         keybd_event(VkMenu, 0, 0, UIntPtr.Zero);
         keybd_event(VkMenu, 0, KeyeventfKeyup, UIntPtr.Zero);
-        if (!SetForegroundWindow(hwnd)) Log("focus failed: foreground switch was refused");
+        SetForegroundWindow(hwnd);
+        if (GetForegroundWindow() != hwnd) Log("focus failed: foreground switch was refused");
     }
 
     static bool LaunchDshApp()

@@ -92,7 +92,9 @@ static partial class Program
         {
             string durationAttr = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase) ? "long" : "short";
             var sb = new StringBuilder();
-            sb.Append("<toast duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\">");
+            // A status/receipt toast is informational, but clicking it should
+            // still open DSH like any other notification toast.
+            sb.Append("<toast launch=\"--focus\" duration=\"").Append(durationAttr).Append("\"><visual><binding template=\"ToastGeneric\">");
             foreach (var line in lines)
             {
                 if (line.Length == 0) continue;
@@ -111,6 +113,11 @@ static partial class Program
                 Group = AnswerGroup,
             };
             Track(flow.StatusTag);
+            toast.Activated += (sender, eventArgs) =>
+            {
+                StopTaskbarFlash();
+                FocusDsh();
+            };
             if (!ShowToast(toast)) Log("status toast failed");
         }
         catch (Exception error)
