@@ -148,9 +148,9 @@ static partial class Program
 
         RemoveToast(flow.QuestionTag, QuestionGroup);
         Log("answer submitted: " + flow.Id);
-        // An approval answer is consumed by the approval waterfall, not by the
-        // question receipt pipeline, so the flow is done once it is sent.
-        if (flow.Approval) FinishFlow(flow);
+        // An approval flow stays registered until the host confirms that the
+        // browser half applied the choice to DSH's own approval panel; a
+        // `resolved` status then retires it, and a failed apply shows `manual`.
     }
 
     static List<AnswerItem> BuildAnswers(QuestionFlow flow)

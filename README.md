@@ -196,9 +196,9 @@ reason, so the plugin reports the retry count from the last retry record
 | --- | --- |
 | Trigger "done"/alert/notice | `session/event` → `turn/end` reason cache + `agent/status` `idle` (root agents only) |
 | Trigger "compact" / compaction failure | `session/event` → `compaction/end` |
-| Trigger "question" | `approval/request` waterfall (answered in the toast) + `tools/execute` for `ask_user_question` |
+| Trigger "question" | `approval/request` waterfall (toast + DSH panel) + `tools/execute` for `ask_user_question` |
 | Done/compact/alert/notice toast | Resident .NET helper `notify` op; WinRT `Windows.UI.Notifications`, `NotifyIcon` balloon fallback. No per-notification process |
-| Interactive approval toast | `approval/request` claims the waterfall with the same `question` op: one fixed-choice card (`允许一次` / `拒绝`), no free-text input. Cancelling the toast hands the request to DSH's own approval panel; cancelling/aborting the turn retires the toast |
+| Interactive approval toast | DSH's own approval panel still shows; the toast is a remote control using the same `question` op: one fixed-choice card (`允许一次` / `拒绝`, no free-text input). Its answer is parked for the browser half, which switches to the owning session and clicks the panel; the panel remains the authority. Cancelling the toast leaves the decision to the panel, and an aborted turn retires the toast |
 | Interactive question toast | Resident .NET helper `question` op, spoken to over the child's stdin/stdout (newline-delimited JSON). One question = one card; several questions = one paged card (`问题 i/n`, 上一题/下一题/提交), with each page's draft restored through the toast `defaultInput` attribute |
 | Question answer receipt | The helper reports the selection and dismisses the question toast; the host parks it for the browser half, checks the `ask_user_question` tool result, then shows exactly one toast — `spoken` with the model's first line (filled to the toast width, cut with `…`). No pending, delivered or title toast |
 | Toast identity / protocol / focus | Helper startup registers the branded AUMID, Start Menu shortcut and `dsh-notify://` handler; clicking a toast focuses DSH in-process (or via `--focus` on the cold path) |

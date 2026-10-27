@@ -21,7 +21,14 @@ static partial class Program
             // report: retire the toast and stop the attention flash now instead
             // of waiting for the toast to expire on its own.
             case "resolved":
-                if (flow.Submitted) break;
+                // An answered approval still needs this status: the host sends
+                // it once the browser half has applied the choice to DSH's own
+                // approval panel, so an already-submitted flow must be retired.
+                if (flow.Submitted)
+                {
+                    FinishFlow(flow);
+                    break;
+                }
                 flow.Submitted = true;
                 StopTaskbarFlash();
                 RemoveToast(flow.QuestionTag, QuestionGroup);

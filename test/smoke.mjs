@@ -15,6 +15,26 @@ await ensureFakeDotnet()
 
 const YIELD = () => new Promise((resolve) => setTimeout(resolve, 80))
 
+/** Call one registered web route and parse its JSON response. */
+const callRoute = (h, path, url) => new Promise((resolve, reject) => {
+  const route = h.routes.get(path)
+  if (route === undefined) {
+    reject(new Error(`missing route ${path}`))
+    return
+  }
+  const res = {
+    writeHead() {},
+    end(body) {
+      try {
+        resolve(JSON.parse(String(body)))
+      } catch (error) {
+        reject(error)
+      }
+    },
+  }
+  route({ url, method: 'GET' }, res)
+})
+
 const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'notify')
 
 // --- Case A: per-session dedup (default 1500ms). ---
@@ -73,15 +93,19 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   h.dispose()
 }
 
-// --- Case B2: an approval request is answered by the interactive toast. ---
+// --- Case B2: an approval toast answer is parked for the browser half, which
+//             applies it to DSH's own approval panel; the panel stays the
+//             authority and the toast is retired when the waterfall settles. ---
 {
   const h = createHarness(plugin, { dedupMs: 0 })
   await h.start()
   const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
   const nextCalls = []
+  let release
+  const uiOutcome = new Promise((resolve) => { release = resolve })
   const pending = h.handlers['approval/request'](
     { agent: root, toolName: 'pwsh', reason: '允许执行?', signal: new AbortController().signal },
-    () => { nextCalls.push('approval'); return 'fallback' },
+    () => { nextCalls.push('approval'); return uiOutcome },
   )
   await YIELD()
   const approval = h.helper().writes.find((w) => w.op === 'question' && w.approval === true)
@@ -91,51 +115,65 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   if (approval !== undefined) {
     h.helper().emit({ ev: 'answer', id: approval.id, sessionId: 'root', answers: [{ id: 'approval', selected: ['允许一次'] }] })
   }
+  await YIELD()
+  const peek = await callRoute(h, '/dsh-notify/pending-answer', '/dsh-notify/pending-answer?peek=1')
+  const taken = await callRoute(h, '/dsh-notify/pending-answer',
+    `/dsh-notify/pending-answer?latest=1&id=${encodeURIComponent(approval?.id ?? '')}`)
+  release('fallback')
   const outcome = await pending
-  const b2Ok = promptOk && outcome === 'allowed-once' && nextCalls.length === 0
-  console.log(`Case B2 approval toast: prompt=${promptOk}, outcome=${outcome}, next=${nextCalls.length} -> ${b2Ok ? 'PASS' : 'FAIL'}`)
+  const retired = h.helper().writes.find((w) => w.op === 'status' && w.id === approval?.id && w.state === 'resolved')
+  const b2Ok = promptOk && nextCalls.length === 1 && peek.available === true &&
+    peek.kind === 'approval' && taken.available === true && taken.decision === 'allowed-once' &&
+    outcome === 'fallback' && retired !== undefined
+  console.log(`Case B2 approval toast: prompt=${promptOk}, next=${nextCalls.length}, peek=${peek.available}, decision=${taken.decision}, retired=${retired !== undefined} -> ${b2Ok ? 'PASS' : 'FAIL'}`)
   if (!b2Ok) process.exit(1)
   h.dispose()
 }
 
-// --- Case B3: cancelling the approval toast delegates to DSH's panel. ---
+// --- Case B3: cancelling the approval toast leaves DSH's panel in charge. ---
 {
   const h = createHarness(plugin, { dedupMs: 0 })
   await h.start()
   const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
-  const nextCalls = []
+  let release
+  const uiOutcome = new Promise((resolve) => { release = resolve })
   const pending = h.handlers['approval/request'](
     { agent: root, toolName: 'pwsh', reason: '切换一下' },
-    () => { nextCalls.push('approval'); return 'fallback' },
+    () => uiOutcome,
   )
   await YIELD()
   const approval = h.helper().writes.find((w) => w.op === 'question' && w.approval === true)
   if (approval !== undefined) h.helper().emit({ ev: 'cancel', id: approval.id, sessionId: 'root' })
+  await YIELD()
+  release('fallback')
   const outcome = await pending
-  const b3Ok = outcome === 'fallback' && nextCalls.join(',') === 'approval'
-  console.log(`Case B3 approval cancel: outcome=${outcome}, next=${nextCalls.join(',')} -> ${b3Ok ? 'PASS' : 'FAIL'}`)
+  const peek = await callRoute(h, '/dsh-notify/pending-answer', '/dsh-notify/pending-answer?peek=1')
+  const b3Ok = outcome === 'fallback' && peek.available === false
+  console.log(`Case B3 approval cancel: outcome=${outcome}, parked=${peek.available} -> ${b3Ok ? 'PASS' : 'FAIL'}`)
   if (!b3Ok) process.exit(1)
   h.dispose()
 }
 
-// --- Case B4: an aborted approval retires the toast and never delegates. ---
+// --- Case B4: an aborted approval retires the toast. ---
 {
   const h = createHarness(plugin, { dedupMs: 0 })
   await h.start()
   const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
-  const nextCalls = []
+  let release
+  const uiOutcome = new Promise((resolve) => { release = resolve })
   const controller = new AbortController()
   const pending = h.handlers['approval/request'](
     { agent: root, toolName: 'pwsh', reason: '已取消的回合', signal: controller.signal },
-    () => { nextCalls.push('approval'); return 'fallback' },
+    () => uiOutcome,
   )
   await YIELD()
   const approval = h.helper().writes.find((w) => w.op === 'question' && w.approval === true)
   controller.abort()
+  release('cancelled')
   const outcome = await pending
-  const retired = h.helper().writes.find((w) => w.op === 'status' && w.id === approval?.id)
-  const b4Ok = outcome === 'cancelled' && retired?.state === 'resolved' && nextCalls.length === 0
-  console.log(`Case B4 approval abort: outcome=${outcome}, retired=${retired?.state}, next=${nextCalls.length} -> ${b4Ok ? 'PASS' : 'FAIL'}`)
+  const retired = h.helper().writes.find((w) => w.op === 'status' && w.id === approval?.id && w.state === 'resolved')
+  const b4Ok = outcome === 'cancelled' && retired !== undefined
+  console.log(`Case B4 approval abort: outcome=${outcome}, retired=${retired !== undefined} -> ${b4Ok ? 'PASS' : 'FAIL'}`)
   if (!b4Ok) process.exit(1)
   h.dispose()
 }
@@ -168,12 +206,9 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   await YIELD()
   const notes = notesOf(h)
   const approval = h.helper().writes.find((w) => w.op === 'question' && w.approval === true)
-  if (approval !== undefined) {
-    h.helper().emit({ ev: 'answer', id: approval.id, sessionId: 'B', answers: [{ id: 'approval', selected: ['拒绝'] }] })
-  }
   const outcome = await pending
   const dOk = notes.length === 1 && notes[0].kind === 'done' &&
-    approval?.sessionId === 'B' && outcome === 'rejected'
+    approval?.sessionId === 'B' && outcome === 'fallback'
   console.log(`Case D cross-session done+approval: notifications=${notes.length}, approval=${outcome} -> ${dOk ? 'PASS' : 'FAIL'}`)
   if (!dOk) process.exit(1)
   h.dispose()
