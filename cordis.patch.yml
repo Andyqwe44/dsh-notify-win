@@ -1,5 +1,8 @@
 # dsh-notify-win bundle patch: inserts the host notification plugin row.
 #
+# Requires the .NET 10 Desktop Runtime: every toast is shown by the resident
+# dsh-toast-question.exe helper; there is no PowerShell fallback.
+#
 # Applied after the base and web-app bundle layers. The profile's own
 # cordis.patch.yml (and the home-level one) is applied afterwards and may:
 #   - disable the plugin:   - id: dsh-notify-win
@@ -15,12 +18,13 @@
 #                               dedupMs: 1500
 #                               questionToastDuration: short
 #                               doneToastDuration: short
-#                               helperEnabled: true
 #                               helperLog: ''
 #                               answerPendingTimeoutMs: 30000
 #                               answerSpeechTimeoutMs: 90000
+#                               showProject: true
 #                               notifyOnCancel: true
 #                               notifyOnError: true
+#                               includeErrorCode: true
 #                               errorTitle: ...
 #                               errorBody: '... {hint} ...'
 #                               maxTokensTitle: ...

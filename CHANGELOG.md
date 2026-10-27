@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **One .NET notification implementation.** Every toast — done / compact /
+  alert / notice / approval and interactive questions — is now shown by the
+  resident `dsh-toast-question.exe` helper over one stdin JSON protocol. The
+  plugin no longer spawns `powershell.exe` per notification and no longer
+  ships or executes any `.ps1`/`.vbs` file. The .NET 10 Desktop Runtime is a
+  hard requirement.
+- The helper now owns toast identity registration (AUMID + Start Menu
+  shortcut), the `dsh-notify://` protocol, click-to-focus (`--focus`), the
+  balloon fallback and the taskbar flash. A toast click is handled in-process;
+  the old focus scripts are gone.
+- The helper source is split by responsibility (`Protocol/`, `Notifications/`,
+  `Questions/`, `Platform/`, `Interop/`, `Logging/`) instead of one large
+  `Program.cs`. All generated files live under `artifacts/` (gitignored);
+  `npm run build` publishes there and stages only the final exe into `lib/`.
+- All toasts now flash only after Windows dismisses them by timeout; the flash
+  stops when DSH comes to the foreground. The helper's question flow is
+  unchanged (submit/cancel/`resolved` still call `FLASHW_STOP`).
 - The answer receipt now shows the model's **first line** instead of its first
   sentence: the line is filled to the toast width and cut with `…` (one
   full-width cell) when it is longer. The receipt fires when that line ends or
@@ -18,6 +35,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   确认…” and “✓ agent 已收到并回应” stages are gone, and the receipt carries
   no title line. A turn with no visible text shows nothing instead of a
   delivery claim.
+
+### Removed
+
+- `lib/notify.ps1`, `lib/notify/_common.ps1`, `lib/notify/_kinds.ps1`,
+  `lib/focus-dsh.ps1`, `lib/focus-dsh.vbs`, and the PowerShell test probes.
+- The `helperEnabled`, `helperUnavailableHint` and `noDotNetHint` config keys:
+  the helper is required, so there is no PowerShell fallback to tune.
+
+### Fixed
+
+- The timeout taskbar flash now uses `FLASHW_TRAY | FLASHW_TIMERNOFG`
+  (`2 | 12`), so Windows stops it as soon as DSH comes to the foreground. The
+  helper no longer runs a 3-second re-pulse loop: that loop was also the only
+  stop detector, so it kept flashing after DSH was already in front or after
+  the question had been answered.
+- A question settled in the DSH card (not in the toast) now retires its toast
+  and stops the flash: the host sends `resolved`, and the helper calls
+  `FlashWindowEx(FLASHW_STOP)`.
 
 ## [0.5.0] - 2026-10-23
 

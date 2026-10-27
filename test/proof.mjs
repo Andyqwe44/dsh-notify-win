@@ -6,6 +6,9 @@
 // (tool result -> spoken with the model's first line; no delivered toast).
 import { PassThrough } from 'node:stream'
 import plugin from '../lib/index.js'
+import { ensureFakeDotnet } from './fake-helper.mjs'
+
+await ensureFakeDotnet()
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -312,6 +315,30 @@ const QUESTIONS = [{
   })
   const stale = await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'stale'))
   assert(stale !== undefined, 'an answer with no live question is reported stale')
+  harness.dispose()
+}
+
+// --- DSH-side answer: no toast proof, so the host retires the toast and stops
+//     the attention flash (the helper calls FLASHW_STOP on "resolved"). --------
+{
+  const harness = createHarness()
+  await harness.start()
+  let resolveTool
+  const tool = harness.handlers['tools/execute'](
+    askExec('S7', 'call-7', QUESTIONS),
+    () => new Promise((resolve) => { resolveTool = resolve }),
+  )
+  const question = await until(() => harness.helper().writes.find((message) => message.op === 'question'))
+  // The user answered on the official DSH card, not in the toast: there is no
+  // toast answer, hence no proof.
+  resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['A'] }] } })
+  await tool
+  const resolved = await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'resolved'))
+  assert(resolved.id === question.id, 'a DSH-side answer retires the toast with resolved', resolved.id)
+  assert(
+    harness.helper().writes.every((message) => message.state !== 'spoken'),
+    'no receipt is invented for a DSH-side answer',
+  )
   harness.dispose()
 }
 

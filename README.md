@@ -31,7 +31,7 @@ English | [中文](README.zh.md)
 ## ✨ Features
 
 - 🔔 **Native Windows toast** (bottom-right, Win10/11 system style)
-- 💡 **Taskbar flash** (`FlashWindowEx`) when DSH is in the background
+- 💡 **Taskbar flash** (`FlashWindowEx`) when DSH is in the background; the OS stops it as soon as DSH comes to the foreground
 - 🖱️ **Click-to-focus** — clicking a toast opens DSH and switches to the corresponding session
 - ✅ Triggers when a **task finishes** (root agent goes `idle`)
 - 🧭 **Tells you WHY it stopped** — the toast reflects the `turn/end` reason instead of always claiming success: normal finish, output-token ceiling (`max-tokens`), blocked pre-step, LLM failure (provider-neutral code + retry count), or cancellation. See [Stop conditions](#stop-conditions).
@@ -41,9 +41,9 @@ English | [中文](README.zh.md)
 - 🧷 **Resident helper, plugin lifetime**: one `dsh-toast-question.exe` is started when the plugin is applied and reused for every question. Disabling the plugin or quitting DSH shuts it down (stdio EOF when DSH exits), so no per-question process spawn and no orphan process.
 - ✅ **One honest receipt**: submitting closes the question toast; nothing else pops up until the model answers, and then exactly one toast appears — the **model's first line**, filled to the toast width and cut with `…` when it is longer (no “已提交” / “已送达” / “已收到并回应” stages, no title line). Text that can only exist if the whole round trip really happened. If the model produces no visible text, nothing is shown (no invented receipt). Cancelling says “没有向 DSH 提交任何答案”; a card that could not be filled says “请在 DSH 窗口中手动回答”.
 - 🖱️ **Answering from the toast reaches the agent**: the chosen options (and custom text, across multiple questions) are applied to the official question card and submitted, so the blocked `ask_user_question` call returns immediately
-- ⏰ **Timeout flash fallback**: if an interactive toast is ignored and dismissed by the system timeout, the taskbar flashes so the pending question is not missed
+- ⏰ **Timeout flash**: if any toast is ignored and dismissed by the system timeout, the taskbar flashes; it stops as soon as DSH is foreground or the question is answered in the window
 - 🖼️ Badge-only toasts: no hero banner in any kind — just the app icon in the header, so notifications stay compact
-- 🪪 Toasts are attributed to **DeepSeek Harness** with its own icon (registered AppUserModelID), never to “Windows PowerShell”
+- 🪪 Toasts are attributed to **DeepSeek Harness** with its own icon (registered AppUserModelID); the generic PowerShell toast identity is used only as a last resort if the branded notifier cannot be created
 - 🚀 No DSH service, model approval, or settings namespace — just one resident helper child process
 
 ## 🚀 One-line install
@@ -102,10 +102,9 @@ dsh plugin --profile web add dsh-notify-win
 
 ## Requirements
 
-- Windows 10/11
+- Windows 10/11 (x64)
 - DeepSeek Harness, any profile (`web` recommended)
-- PowerShell 7 or Windows PowerShell 5.1 (5.1 is used automatically as fallback)
-- .NET 10 Desktop Runtime (x64) — only needed for **interactive question toasts** (`ask_user_question`); done/compact toasts use PowerShell and do not require it. The question helper stays resident for the plugin lifetime.
+- .NET 10 Desktop Runtime (x64) — **required**: the resident toast helper is the only notification implementation. All toasts (done / compact / alert / notice / approval and interactive questions) go through it. Install with `winget install Microsoft.DotNet.DesktopRuntime.10` or from <https://dotnet.microsoft.com/download/dotnet/10.0>. No PowerShell script is used.
 
 ## Configuration
 
@@ -124,13 +123,10 @@ Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
     askBody: 'The assistant asked you something.'
     dedupMs: 1500              # suppress duplicate notifications within this window
     questionToastDuration: 'short'  # 'short' (~5s) or 'long' (~25s) for ask_user_question toasts
-    doneToastDuration: 'short'      # 'short' (~5s) or 'long' (~25s) for done/compact/approval toasts
-    helperEnabled: true        # false disables the resident .NET helper (answer in DSH instead)
+    doneToastDuration: 'short'      # 'short' (~5s) or 'long' (~25s) for done/compact/alert/notice/approval toasts
     helperLog: ''              # optional file for helper protocol/toast diagnostics
     answerPendingTimeoutMs: 30000  # how long a parked answer waits for the browser half before warning
     answerSpeechTimeoutMs: 90000   # how long to wait for the model's first line after delivery
-    helperUnavailableHint: ' (answer in the DSH window)'  # appended when the helper cannot run
-    noDotNetHint: ' (install .NET 10 Desktop Runtime to answer from the toast)'  # appended when .NET is missing
     showProject: true          # prefix body with project label
 
     # Stop-reason notifications (defaults are Chinese; shown here in English)
@@ -200,12 +196,13 @@ reason, so the plugin reports the retry count from the last retry record
 | Trigger "done"/alert/notice | `session/event` → `turn/end` reason cache + `agent/status` `idle` (root agents only) |
 | Trigger "compact" / compaction failure | `session/event` → `compaction/end` |
 | Trigger "question" | `approval/request` waterfall + `tools/execute` for `ask_user_question` |
-| Done/compact/alert/notice toast | WinRT `Windows.UI.Notifications` via `notify.ps1` (entry) + `notify/_common.ps1` (OS plumbing) + `notify/_kinds.ps1` (per-kind presentation), falls back to `NotifyIcon` balloon |
-| Interactive question toast | Resident .NET helper `dsh-toast-question.exe --serve`, spoken to over the child's stdin/stdout (newline-delimited JSON). One question = one card; several questions = one paged card (`问题 i/n`, 上一题/下一题/提交), with each page's draft restored through the toast `defaultInput` attribute |
+| Done/compact/alert/notice/approval toast | Resident .NET helper `notify` op; WinRT `Windows.UI.Notifications`, `NotifyIcon` balloon fallback. No per-notification process |
+| Interactive question toast | Resident .NET helper `question` op, spoken to over the child's stdin/stdout (newline-delimited JSON). One question = one card; several questions = one paged card (`问题 i/n`, 上一题/下一题/提交), with each page's draft restored through the toast `defaultInput` attribute |
 | Question answer receipt | The helper reports the selection and dismisses the question toast; the host parks it for the browser half, checks the `ask_user_question` tool result, then shows exactly one toast — `spoken` with the model's first line (filled to the toast width, cut with `…`). No pending, delivered or title toast |
+| Toast identity / protocol / focus | Helper startup registers the branded AUMID, Start Menu shortcut and `dsh-notify://` handler; clicking a toast focuses DSH in-process (or via `--focus` on the cold path) |
 | Helper lifetime | Plugin `apply` starts it → `ctx.effect` disposal sends `shutdown`; DSH exit closes stdin (EOF) and the helper exits; a crashed host leaves no orphan |
-| Taskbar flash | `EnumWindows` + `FlashWindowEx` (`FLASHW_TRAY \| FLASHW_TIMERNOFG` = 14) |
-| Execution | Done/compact/alert/notice via fire-and-forget PowerShell; questions via the resident helper |
+| Taskbar flash | `EnumWindows` + `FlashWindowEx` (`FLASHW_TRAY \| FLASHW_TIMERNOFG` = `2 \| 12` = 14); the OS stops it when DSH is foreground, with no periodic re-pulse |
+| Execution | Every notification, question and toast click goes through the resident .NET helper; there is no PowerShell path |
 
 The plugin registers no service, tool, or settings namespace — a plain consumer row, safe in any profile.
 
@@ -213,22 +210,25 @@ The plugin registers no service, tool, or settings namespace — a plain consume
 
 | Event | What happens |
 | --- | --- |
-| Plugin applied (DSH start, reload) | The host probes `--check` once, then spawns `dsh-toast-question.exe --serve` and waits for its `ready` line (5 s). |
+| Plugin applied (DSH start, reload) | The host probes `--check` once, then spawns `dsh-toast-question.exe --serve` and waits for its `ready` line (5 s). The helper registers the toast identity and protocol on the way up. |
+| Non-interactive notification | One JSON `notify` line on the helper's stdin — no new process. The helper shows the toast and watches `Dismissed`/`Activated`. |
 | Question asked | One JSON `question` line on the helper's stdin — no new process. |
 | User answers | The helper emits `answer` and removes the question toast; the host parks it for the browser half. |
 | Tool result returns | The host compares the returned answers with the toast's (a mismatch is reported), then waits for the model's first line and shows it as the only receipt, cut to the toast width. |
+| Question answered in the DSH card | The host sends `resolved`; the helper stops the flash and removes the question toast. |
 | Plugin disabled / profile row removed | `ctx.effect` disposal sends `shutdown`; the helper exits within 1.5 s (force-terminated otherwise). |
 | DSH quits or crashes | The helper's stdin reaches EOF and it exits on its own; the managed subprocess range is also reaped by DSH. |
 
 ## Known limitations
 
 - Native toast text is compact: only about 4 lines are displayed, so long content is truncated.
-- The native selection dropdown may collapse when the pointer moves onto the popup; if the toast is then dismissed by timeout, the taskbar flash still reminds you.
+- The native selection dropdown may collapse when the pointer moves onto the popup; if the toast is then dismissed by timeout, the taskbar flash still reminds you, and it stops once DSH is foreground.
+- The .NET 10 Desktop Runtime is a hard requirement. Without it the helper cannot start and no notification can be shown; the host logs an explicit error. There is no PowerShell fallback.
+- The helper is a single long-lived process. If it crashes, the next notification asks the host to spawn it again; until then, notifications are dropped with a log line.
 - `FlashWindowEx` uses the system's warm-pulse highlight; custom colors are not possible.
-- Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background.
+- Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background; an active flash is stopped by the OS when the window comes to the foreground.
 - A cancelled turn is reported as "cancelled" (not "task complete"); set `notifyOnCancel: false` to silence it, or `notifyOnError: false` to silence abnormal-stop alerts.
 - Notifications are deduplicated per session within `dedupMs` (default 1500 ms). A second `idle` for an already-reported turn stays quiet.
-- Interactive question toasts require the .NET 10 Desktop Runtime on the machine. If it is missing, the plugin falls back to a plain PowerShell toast that still surfaces the question and appends a hint to install .NET.
 - Multi-question toasts page by re-showing the native toast. Windows animates the old toast out and the new one in, so each page change has a short visual gap; the `已答` line carries the context across it. Multi-question cards always use the long duration (about 25 s).
 - A custom answer wins over the dropdown selection on the same page, exactly like the previous single-question toast; clear the text box if you only want the dropdown choice.
 - The receipt cannot be faked by the UI: “spoken” is the model's own first line (cut with … to fit one toast line) and is the only toast shown after submitting. If the model produces no visible text (for example it immediately calls another tool), no receipt toast appears at all.
@@ -238,54 +238,67 @@ The plugin registers no service, tool, or settings namespace — a plain consume
 ## Development
 
 ```powershell
+npm run build     # publish the helper to artifacts/ and stage it into lib/
 npm run check     # syntax check
-npm test          # smoke + proof-pipeline + helper protocol/lifecycle tests
-
-# Show a real toast + taskbar flash (Windows PowerShell 5.1: the WinRT toast
-# projection is unavailable in PowerShell 7, which silently degrades to a balloon):
-powershell -NoProfile -File lib/notify.ps1 -Kind done -Title "test" -Body "test"
-
-# Reproduce an abnormal-stop alert:
-powershell -NoProfile -File lib/notify.ps1 -Kind alert -Title "test" -Body "retry exhausted" `
-  -Reason error -Code RATE_LIMIT -Retry 5 -RetryMax 5 -Duration long
-
-# Rebuild the resident question helper. The exe is locked while a helper is
-# running, so quit DSH (or stop dsh-toast-question.exe) first.
-dotnet publish src/DshToastQuestion/DshToastQuestion.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o lib
+npm test          # flash-policy + smoke + proof-pipeline + helper protocol tests
 ```
 
-`npm test` runs three suites: `test/smoke.mjs` (notification logic with a mocked ctx),
-`test/proof.mjs` (question → parked answer → tool result → first line, using a fake
-helper that speaks the real protocol), and `test/helper-protocol.mjs` (the real exe:
-`--check`, `ready`, `ping`, `shutdown`, and exit on stdin EOF).
+`npm run build` requires the **.NET 10 SDK** (the runtime is enough to run the
+published exe). It publishes into `artifacts/publish/` and copies only the final
+`dsh-toast-question.exe` into `lib/`, which is the directory npm ships. The
+helper is locked while a helper is running, so quit DSH (or stop
+`dsh-toast-question.exe`) before rebuilding. If `dotnet` is not on PATH, set
+`DOTNET` to the full path of the SDK's `dotnet.exe`.
+
+`npm test` runs four suites: `test/flash-policy.mjs` (the flash policy and the
+absence of the old scripts), `test/smoke.mjs` (notification logic with a fake
+helper), `test/proof.mjs` (question → parked answer → tool result → first line,
+using a fake helper that speaks the real protocol), and
+`test/helper-protocol.mjs` (the real exe: `--check`, `ready`, `ping`,
+`shutdown`, and exit on stdin EOF).
 
 ## Project layout
 
 ```
 dsh-notify-win/
-├── lib/
-│   ├── index.js               # Host half: events, stop reason, helper lifecycle, answer proofs
-│   ├── client.js              # Browser-side click-to-focus + official-card driver
-│   ├── notify.ps1             # Entry: validate kind, run the toast pipeline
-│   ├── notify/
-│   │   ├── _common.ps1        # Identity, protocol, theme, toast/balloon, taskbar flash
-│   │   └── _kinds.ps1         # Per-kind presentation (done/compact/alert/notice/question)
-│   ├── focus-dsh.ps1          # Focus/launch the DSH Edge PWA
-│   ├── focus-dsh.vbs          # Hidden launcher for focus-dsh.ps1
-│   ├── dsh-toast-question.exe # Resident question helper (C#, --serve)
-│   └── dsh-*.png / dsh-*.ico  # Branding assets
-├── src/DshToastQuestion/
-│   ├── Program.cs             # C# helper source (stdio JSON protocol)
-│   └── DshToastQuestion.csproj
-├── test/
-│   ├── smoke.mjs              # Notification logic smoke test
-│   ├── proof.mjs              # Answer → tool result → first-sentence receipt
-│   ├── helper-protocol.mjs    # Real exe protocol/lifecycle test
-│   └── headless-overlay.yml
-├── docs/
-│   └── assets/screenshots/    # README screenshots
-├── cordis.patch.yml           # DSH bundle patch
-├── package.json               # dsh.bundle declaration
+├── Directory.Build.props        # all generated output goes to artifacts/
+├── artifacts/                   # build output (gitignored)
+│   ├── bin/                     # compiled assemblies
+│   └── publish/                 # single-file helper before staging
+├── scripts/
+│   └── build-helper.mjs         # dotnet publish + stage exe into lib/
+├── src/DshToastQuestion/        # C# source only (no bin/obj)
+│   ├── DshToastQuestion.csproj
+│   ├── Program.cs               # entry point, CLI modes, stdin dispatch
+│   ├── State.cs                 # shared state, constants, JSON options
+│   ├── GlobalUsings.cs          # project-wide usings
+│   ├── Protocol/
+│   │   ├── WireModels.cs        # JSON messages and question models
+│   │   └── HelperOutput.cs      # stdout protocol + XML escaping
+│   ├── Notifications/
+│   │   └── Notifications.cs     # notify op, toast delivery, balloon, tracking
+│   ├── Questions/
+│   │   ├── QuestionFlow.cs      # flow state, start/finish
+│   │   ├── QuestionRendering.cs # toast XML, paging, drafts
+│   │   ├── QuestionInteraction.cs # activated actions, submit, answers
+│   │   └── QuestionStatus.cs    # host status -> receipt toasts
+│   ├── Platform/
+│   │   ├── ToastIdentity.cs     # AUMID, Start Menu shortcut, protocol
+│   │   ├── DshWindow.cs         # find/focus/launch DSH
+│   │   └── TaskbarFlash.cs      # FLASHW_TIMERNOFG / FLASHW_STOP
+│   ├── Interop/
+│   │   └── NativeMethods.cs     # P/Invoke, COM interfaces, structs
+│   └── Logging/
+│       └── HelperLog.cs         # optional --log file
+├── lib/                         # npm package: JS, assets, staged exe
+│   ├── index.js                 # host half: events, helper lifecycle, proofs
+│   ├── client.js                # browser-side click-to-focus + card driver
+│   ├── dsh-toast-question.exe   # staged by npm run build (gitignored)
+│   └── dsh-*.png / dsh-*.ico    # branding assets
+├── test/                        # fake helper + four test suites
+├── docs/                        # landing page and screenshots
+├── cordis.patch.yml             # DSH bundle patch
+├── package.json                 # dsh.bundle declaration + scripts
 ├── README.md
 └── README.zh.md
 ```
@@ -296,8 +309,9 @@ dsh-notify-win/
 
 ## Roadmap
 
-- **V1 (implemented)**: done + compact + question toasts; single-select dropdown with custom answer; Cancel / Send; timeout → taskbar flash fallback.
+- **V1 (implemented)**: done + compact + question toasts; single-select dropdown with custom answer; Cancel / Send; timeout → taskbar flash.
 - **V1.1 (implemented)**: paged multi-question toast with per-page drafts (dropdown + custom text); multi-select question toast by numbered input; multi-question card driving; honest two-stage receipt backed by the tool result and the model's first line (filled to the toast width, cut with …).
+- **V1.2 (implemented)**: one resident .NET helper for every notification, toast identity, click-to-focus and the taskbar flash; no PowerShell/`.ps1` path; every toast flashes only after it times out.
 - **V2 (planned)**: fully self-contained packaging (no .NET runtime install) and/or background activation so toast buttons submit without any foreground activation.
 
 ## License

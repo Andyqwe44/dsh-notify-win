@@ -31,7 +31,7 @@
 ## ✨ 功能
 
 - 🔔 **原生 Windows toast**（右下角，Win10/11 系统样式）
-- 💡 **任务栏闪烁**（`FlashWindowEx`），DSH 在后台时提醒你切回
+- 💡 **任务栏闪烁**（`FlashWindowEx`），DSH 在后台时提醒你切回；回到 DSH 前台后由系统停止
 - 🖱️ **点击跳转** — 点击 toast 自动打开 DSH 并切换到对应会话
 - ✅ **任务完成**时触发（根 agent 进入 `idle`）
 - 🧭 **说清楚为什么停** —— 通知跟随 `turn/end` 的真实原因，不再一律报「完成」：正常完成、输出达到上限（`max-tokens`）、前置检查拦截、LLM 失败（带 provider 无关错误码与重试次数）、被取消。详见 [停止原因](#停止原因)。
@@ -41,9 +41,9 @@
 - 🧷 **常驻 helper，跟随插件生命周期**：插件加载时启动一个 `dsh-toast-question.exe`，之后每次提问复用；在插件里关掉插件或退出 DSH 时回收（DSH 退出会关闭 stdio，helper 读到 EOF 自行退出），不再每次提问都拉起新进程，也不会留下孤儿进程。
 - ✅ **只有一条、不撒谎的回执**：点 Send 后问题 toast 直接收起，中间没有任何「已提交 / 已送达 / 已收到并回应」步骤；模型回答后只弹一条 toast，内容就是 **模型返回的第一行**（铺满 toast 一行宽度，超长以 `…` 截断，没有标题行）——这句话只可能来自真实完成的整条链路。模型没有可见文本时不弹回执（不编造）。取消会明确写「没有向 DSH 提交任何答案」；卡片填不进去则提示「请在 DSH 窗口中手动回答」。
 - 🖱️ **在 toast 里回答能直接送达 agent**：所选选项（含自定义文本、多个问题）会落到官方提问卡片并提交，卡住的 `ask_user_question` 立即返回
-- ⏰ **超时闪烁兜底**：交互 toast 被忽略并超时关闭后，任务栏闪烁提醒你还有待处理的问题
+- ⏰ **超时闪烁**：任意 toast 被忽略并超时关闭后，任务栏闪烁提醒你；回到 DSH 前台或在窗口里作答后立即停止
 - 🖼️ 不使用 hero 大图：所有通知都只有应用角标，保持紧凑
-- 🪪 通知归属显示 **DeepSeek Harness** 与自带图标（自注册 AppUserModelID），不再是「Windows PowerShell」
+- 🪪 通知归属显示 **DeepSeek Harness** 与自带图标（自注册 AppUserModelID）；只有在品牌 notifier 无法创建时才退回系统 PowerShell 身份
 - 🚀 不注册 DSH 服务、不经过模型审批、不占用 settings 命名空间——只有一个常驻 helper 子进程
 
 ## 🚀 一行安装
@@ -102,10 +102,9 @@ dsh plugin --profile web add dsh-notify-win
 
 ## 环境要求
 
-- Windows 10/11
+- Windows 10/11（x64）
 - DeepSeek Harness，任意 profile（推荐 `web`）
-- PowerShell 7 或 Windows PowerShell 5.1（5.1 会自动作为兜底）
-- .NET 10 Desktop Runtime（x64）— 仅**交互式问题 toast**（`ask_user_question`）需要；任务完成/压缩完成 toast 走 PowerShell，不需要 .NET
+- .NET 10 Desktop Runtime（x64）— **必需**：常驻 .NET helper 是唯一的通知实现。完成/压缩/告警/取消/审批以及交互问题全部走它。用 `winget install Microsoft.DotNet.DesktopRuntime.10` 或从 <https://dotnet.microsoft.com/download/dotnet/10.0> 安装。不再使用 PowerShell 脚本。
 
 ## 配置
 
@@ -124,13 +123,10 @@ dsh plugin --profile web add dsh-notify-win
     askBody: '助手向你提了一个问题，请切换到 DeepSeek Harness 查看。'
     dedupMs: 1500              # 两次通知之间的去重窗口（毫秒）
     questionToastDuration: 'short'  # 'short'（约5秒）或 'long'（约25秒），用于 ask_user_question 交互 toast
-    doneToastDuration: 'short'      # 'short'（约5秒）或 'long'（约25秒），用于完成/压缩/审批 toast
-    helperEnabled: true        # false = 不启用常驻 .NET helper（改到 DSH 窗口回答）
+    doneToastDuration: 'short'      # 'short'（约5秒）或 'long'（约25秒），用于完成/压缩/告警/审批 toast
     helperLog: ''              # 可选：helper 协议/toast 诊断日志路径
     answerPendingTimeoutMs: 30000  # 暂存的答案最多等浏览器端多久，超时才提示
     answerSpeechTimeoutMs: 90000   # 送达后等待模型第一行的上限
-    helperUnavailableHint: '（toast 内回答暂不可用，请到 DSH 窗口作答）'  # helper 不可用时追加
-    noDotNetHint: '（如需从 toast 直接回答，请安装 .NET 10 Desktop Runtime）'  # .NET 缺失时追加到 toast 正文
     showProject: true          # 正文前缀显示项目标识
 
     # 停止原因通知
@@ -189,12 +185,13 @@ dsh plugin --profile web add dsh-notify-win
 | 「完成/告警/取消」触发 | `session/event` → `turn/end` 原因缓存 + `agent/status` 的 `idle`（仅根 agent） |
 | 「压缩完成 / 压缩失败」触发 | `session/event` → `compaction/end` |
 | 「待回答」触发 | `approval/request` 瀑布 + `ask_user_question` 的 `tools/execute` |
-| 完成/压缩/告警/取消 toast | WinRT `Windows.UI.Notifications`，经 `notify.ps1`（入口）+ `notify/_common.ps1`（OS 管道）+ `notify/_kinds.ps1`（按 kind 渲染），失败回退 `NotifyIcon` 气泡 |
-| 交互问题 toast | 常驻 .NET helper `dsh-toast-question.exe --serve`，通过子进程 stdin/stdout 的 JSON 行通信。单题一张卡；多题一张分页卡（`问题 i/n`、上一题/下一题/提交），每页草稿通过 toast 的 `defaultInput` 属性恢复 |
+| 完成/压缩/告警/取消/审批 toast | 常驻 .NET helper 的 `notify` op；WinRT `Windows.UI.Notifications`，失败回退 `NotifyIcon` 气泡。不再为每条通知启动进程 |
+| 交互问题 toast | 常驻 .NET helper 的 `question` op，通过子进程 stdin/stdout 的 JSON 行通信。单题一张卡；多题一张分页卡（`问题 i/n`、上一题/下一题/提交），每页草稿通过 toast 的 `defaultInput` 属性恢复 |
 | 回答回执 | helper 上报选择并收起问题 toast → 宿主暂存给浏览器端并核对 `ask_user_question` 的 tool result → 只弹一条带模型第一行的 `spoken`（铺满一行、超出以 … 截断，无标题行）；没有 pending / delivered toast |
+| 身份 / 协议 / 点击聚焦 | helper 启动时注册 AUMID、Start Menu 快捷方式和 `dsh-notify://`；点击 toast 由 helper 在进程内聚焦 DSH（冷启动走 `--focus`） |
 | helper 生命周期 | 插件 `apply` 启动 → `ctx.effect` 销毁时发 `shutdown`；DSH 退出关闭 stdin（EOF），helper 自行退出；宿主崩溃也不会留下孤儿 |
-| 任务栏闪烁 | `EnumWindows` + `FlashWindowEx`（`FLASHW_TRAY \| FLASHW_TIMERNOFG` = 14） |
-| 执行方式 | 完成/压缩/告警/取消走即发即忘 PowerShell；提问走常驻 helper |
+| 任务栏闪烁 | `EnumWindows` + `FlashWindowEx`（`FLASHW_TRAY \| FLASHW_TIMERNOFG` = `2 \| 12` = 14；系统在 DSH 回到前台时停止，无周期重闪） |
+| 执行方式 | 所有通知、提问和 toast 点击都走常驻 .NET helper；没有 PowerShell 路径 |
 
 插件不注册服务、工具或 settings 命名空间——普通消费者行，任何 profile 都安全。
 
@@ -202,22 +199,25 @@ dsh plugin --profile web add dsh-notify-win
 
 | 时机 | 行为 |
 | --- | --- |
-| 插件加载（DSH 启动 / 热重载） | 宿主先跑一次 `--check` 探测，再启动 `dsh-toast-question.exe --serve`，5 秒内等它的 `ready` 行 |
+| 插件加载（DSH 启动 / 热重载） | 宿主先跑一次 `--check` 探测，再启动 `dsh-toast-question.exe --serve`，5 秒内等它的 `ready` 行；helper 启动时注册 toast 身份和协议 |
+| 非交互通知 | 往 helper 的 stdin 写一行 JSON `notify`——不新建进程；helper 显示 toast 并监听 `Dismissed` / `Activated` |
 | 有提问 | 往 helper 的 stdin 写一行 JSON `question`——不再新建进程 |
 | 用户回答 | helper 上报 `answer` 并收起问题 toast；宿主暂存给浏览器端 |
 | tool result 返回 | 宿主比对 toast 的答案与 agent 实际收到的答案（不一致会提示），然后等模型第一行，只显示这一条 `spoken`（按 toast 一行宽度截断） |
+| 问题在 DSH 卡片内被回答（未走 toast） | 宿主发 `resolved`；helper 停止闪烁并移除问题 toast |
 | 插件被关闭 / 从 profile 移除 | `ctx.effect` 清理时发 `shutdown`，helper 1.5 秒内退出（否则强制终止） |
 | DSH 退出或崩溃 | helper 的 stdin 收到 EOF 自行退出；子进程范围也会被 DSH 回收 |
 
 ## 已知限制
 
 - 原生 toast 文本很紧凑，大约只能显示 4 行，长内容会被截断。
-- 原生下拉框弹出列表时，鼠标移到弹层上可能导致 toast 收起；如果随后 toast 超时关闭，任务栏闪烁仍会提醒你。
+- 原生下拉框弹出列表时，鼠标移到弹层上可能导致 toast 收起；如果随后 toast 超时关闭，任务栏闪烁仍会提醒你，回到 DSH 前台后即停。
+- .NET 10 Desktop Runtime 是硬性要求。没有它 helper 无法启动，所有通知都不会出现；宿主会写明确的错误日志。没有 PowerShell 兜底。
+- helper 是单个常驻进程。它崩溃后，下一条通知会让宿主重新拉起；在此之前通知会被丢弃并记录日志。
 - `FlashWindowEx` 使用系统自带暖色脉冲，无法自定义颜色。
-- Windows 不会闪烁前台窗口——只有 DSH 在后台时任务栏按钮才会闪。
+- Windows 不会闪烁前台窗口——只有 DSH 在后台时任务栏按钮才会闪；已经开始的闪烁在回到前台时由系统停止。
 - 取消的一轮会如实报「已取消」而不是「任务完成」；可用 `notifyOnCancel: false` 静音，或用 `notifyOnError: false` 静音异常停止告警。
 - 通知按会话在 `dedupMs`（默认 1500ms）内去重；同一轮重复的 `idle` 不会重复通知。
-- 交互式问题 toast 需要机器上安装 .NET 10 Desktop Runtime。如果未安装，插件会回退为普通 PowerShell toast，仍然会提醒有问题待处理，并在正文末尾追加安装 .NET 的提示。
 - 多问题 toast 通过重新显示原生 toast 来翻页，Windows 会把旧 toast 收起、新 toast 滑入，因此每次翻页都有一小段视觉间隔；`已答` 行用于跨页保留上下文。多问题卡片固定使用 long 时长（约 25 秒）。
 - 同一页里自定义答案优先于下拉选择（与原来的单题 toast 一致）；只想用下拉选择时，把文本框清空即可。
 - 回执无法被界面伪造：「已回应」来自模型自己输出的第一行（按 toast 一行宽度截断，超出补 …），并且是唯一的一条回执。如果模型没有输出可见文本（例如立刻又去调用工具），不会弹回执 toast。
@@ -227,50 +227,57 @@ dsh plugin --profile web add dsh-notify-win
 ## 开发
 
 ```powershell
+npm run build     # 发布 helper 到 artifacts/，并把最终 exe 复制到 lib/
 npm run check     # 语法检查
-npm test          # 冒烟 + 回执链路 + helper 协议/生命周期三组测试
-
-# 单独测试通知脚本（会真的弹出 toast + 闪烁任务栏）。
-# 必须用 Windows PowerShell 5.1：PowerShell 7 没有 WinRT toast 投影，会静默退化成气泡。
-powershell -NoProfile -File lib/notify.ps1 -Kind done -Title "test" -Body "test"
-
-# 复现一次异常停止告警：
-powershell -NoProfile -File lib/notify.ps1 -Kind alert -Title "test" -Body "重试耗尽" `
-  -Reason error -Code RATE_LIMIT -Retry 5 -RetryMax 5 -Duration long
-
-# 重新构建常驻问题 helper。运行时 exe 被占用，先退出 DSH（或结束 dsh-toast-question.exe）：
-dotnet publish src/DshToastQuestion/DshToastQuestion.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o lib
+npm test          # 闪烁策略 + 冒烟 + 回执链路 + helper 协议/生命周期四组测试
 ```
 
-`npm test` 依次跑三组：`test/smoke.mjs`（mock ctx 的通知逻辑）、`test/proof.mjs`（用真实协议的假 helper 验证「回答 → tool result → 第一行」）、`test/helper-protocol.mjs`（真实 exe 的 `--check` / `ready` / `ping` / `shutdown` / stdin EOF 退出）。
+`npm run build` 需要 **.NET 10 SDK**（运行已发布的 exe 只需 Desktop Runtime）。产物先写到 `artifacts/publish/`，只把最终的 `dsh-toast-question.exe` 复制到 `lib/`——那才是 npm 打包和宿主运行时查找的目录。helper 运行时 exe 会被占用，重新构建前先退出 DSH（或结束 `dsh-toast-question.exe`）。如果 `dotnet` 不在 PATH 中，把 `DOTNET` 设为 SDK 的 `dotnet.exe` 完整路径。
+
+`npm test` 依次跑四组：`test/flash-policy.mjs`（闪烁策略 + 旧脚本已删除的守卫）、`test/smoke.mjs`（假 helper 的通知逻辑）、`test/proof.mjs`（用真实协议的假 helper 验证「回答 → tool result → 第一行」）、`test/helper-protocol.mjs`（真实 exe 的 `--check` / `ready` / `ping` / `shutdown` / stdin EOF 退出）。
 
 ## 项目结构
 
 ```
 dsh-notify-win/
-├── lib/
-│   ├── index.js               # 宿主半：事件、停止原因、helper 生命周期、回执链路
-│   ├── client.js              # 浏览器侧：点击跳转 + 官方卡片驱动
-│   ├── notify.ps1             # 入口：校验 kind，执行通知流水线
-│   ├── notify/
-│   │   ├── _common.ps1        # 身份/协议/主题/toast/气泡/任务栏闪烁
-│   │   └── _kinds.ps1         # 按 kind 渲染（done/compact/alert/notice/question）
-│   ├── focus-dsh.ps1          # 聚焦/启动 DSH Edge PWA
-│   ├── focus-dsh.vbs          # focus-dsh.ps1 的隐藏启动器
-│   ├── dsh-toast-question.exe # 常驻问题 helper（C#，--serve）
-│   └── dsh-*.png / dsh-*.ico  # 品牌素材
-├── src/DshToastQuestion/
-│   ├── Program.cs             # C# helper 源码（stdio JSON 协议）
-│   └── DshToastQuestion.csproj
-├── test/
-│   ├── smoke.mjs              # 通知逻辑冒烟测试
-│   ├── proof.mjs              # 回答 → tool result → 第一行回执
-│   ├── helper-protocol.mjs    # 真实 exe 的协议/生命周期测试
-│   └── headless-overlay.yml
-├── docs/
-│   └── assets/screenshots/    # README 截图
-├── cordis.patch.yml           # DSH bundle 补丁
-├── package.json               # dsh.bundle 声明
+├── Directory.Build.props        # 所有生成物统一进 artifacts/
+├── artifacts/                   # 构建产物（gitignored）
+│   ├── bin/                     # 编译出的程序集
+│   └── publish/                 # 发布成单文件 exe 后、复制到 lib/ 之前
+├── scripts/
+│   └── build-helper.mjs         # dotnet publish + 把 exe 复制到 lib/
+├── src/DshToastQuestion/        # 只放 C# 源码（不再有 bin/obj）
+│   ├── DshToastQuestion.csproj
+│   ├── Program.cs               # 入口、CLI 模式、stdin 分发
+│   ├── State.cs                 # 共享状态、常量、JSON 选项
+│   ├── GlobalUsings.cs          # 项目级 using
+│   ├── Protocol/
+│   │   ├── WireModels.cs        # JSON 消息与问题模型
+│   │   └── HelperOutput.cs      # stdout 协议 + XML 转义
+│   ├── Notifications/
+│   │   └── Notifications.cs     # notify op、toast、气泡、跟踪清理
+│   ├── Questions/
+│   │   ├── QuestionFlow.cs      # flow 状态、开始/结束
+│   │   ├── QuestionRendering.cs # toast XML、分页、草稿
+│   │   ├── QuestionInteraction.cs # 激活动作、提交、答案
+│   │   └── QuestionStatus.cs    # 宿主状态 → 回执 toast
+│   ├── Platform/
+│   │   ├── ToastIdentity.cs     # AUMID、Start Menu 快捷方式、协议
+│   │   ├── DshWindow.cs         # 查找/聚焦/启动 DSH
+│   │   └── TaskbarFlash.cs      # FLASHW_TIMERNOFG / FLASHW_STOP
+│   ├── Interop/
+│   │   └── NativeMethods.cs     # P/Invoke、COM 接口、结构体
+│   └── Logging/
+│       └── HelperLog.cs         # 可选 --log 文件
+├── lib/                         # npm 包目录：JS、素材、构建后复制进来的 exe
+│   ├── index.js                 # 宿主半：事件、helper 生命周期、回执
+│   ├── client.js                # 浏览器侧：点击跳转 + 官方卡片驱动
+│   ├── dsh-toast-question.exe   # 由 npm run build 复制（gitignored）
+│   └── dsh-*.png / dsh-*.ico    # 品牌素材
+├── test/                        # 假 helper + 四组测试
+├── docs/                        # 落地页与截图
+├── cordis.patch.yml             # DSH bundle 补丁
+├── package.json                 # dsh.bundle 声明 + 构建脚本
 ├── README.md
 └── README.zh.md
 ```
@@ -281,8 +288,9 @@ dsh-notify-win/
 
 ## Roadmap
 
-- **V1（已实现）**：完成 + 压缩 + 问题 toast；单选下拉框 + 自定义答案；取消 / Send；超时 → 任务栏闪烁兜底。
+- **V1（已实现）**：完成 + 压缩 + 问题 toast；单选下拉框 + 自定义答案；取消 / Send；超时 → 任务栏闪烁。
 - **V1.1（已实现）**：分页多问题 toast（每页草稿独立保存，含下拉框和自定义文本）；多选问题 toast（编号输入）；多问题卡片驱动；由 tool result 与模型第一行支撑的两段式真实回执。
+- **V1.2（已实现）**：一个常驻 .NET helper 统一负责所有通知、toast 身份、点击聚焦和任务栏闪烁；没有 PowerShell/`.ps1` 路径；所有 toast 都只在超时后闪烁。
 - **V2（计划中）**：完全自包含打包（无需安装 .NET 运行时）和/或后台激活，让 toast 按钮无需前台激活即可直接提交。
 
 ## License

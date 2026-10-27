@@ -14,9 +14,10 @@
     "cordis.patch.yml"
   ],
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/client.js",
-    "test": "node test/smoke.mjs && node test/proof.mjs && node test/helper-protocol.mjs",
-    "prepublishOnly": "npm run check && npm test"
+    "build": "node scripts/build-helper.mjs",
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check scripts/build-helper.mjs",
+    "test": "node test/flash-policy.mjs && node test/smoke.mjs && node test/proof.mjs && node test/helper-protocol.mjs",
+    "prepublishOnly": "npm run build && npm run check && npm test"
   },
   "keywords": [
     "deepseek-harness",

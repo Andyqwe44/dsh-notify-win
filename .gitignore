@@ -10,8 +10,9 @@ Thumbs.db
 .vscode/
 coverage/
 dist/
+artifacts/
 src/**/bin/
 src/**/obj/
-# Built toast helper (~25 MB): publish src/DshToastQuestion and copy the
-# resulting dsh-toast-question.exe here locally; never commit it.
+# Built toast helper (~25 MB): `npm run build` publishes into artifacts/ and
+# copies the resulting dsh-toast-question.exe here for packaging; never commit it.
 lib/*.exe

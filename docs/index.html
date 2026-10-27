@@ -103,10 +103,10 @@
     <h2>✨ 功能</h2>
     <ul>
       <li><strong>原生 Toast</strong> — 右下角系统通知，Win10/11 样式</li>
-      <li><strong>任务栏闪烁</strong> — DSH 在后台时提醒你切回窗口</li>
+      <li><strong>任务栏闪烁</strong> — DSH 在后台时提醒你切回窗口，回到前台自动停止</li>
       <li><strong>任务完成触发</strong> — 根 agent 进入 idle 时自动通知</li>
       <li><strong>需要回答触发</strong> — 审批 / ask_user_question 时提醒</li>
-      <li><strong>主题适配</strong> — 浅色 / 深色主题自动切换 hero 大图</li>
+      <li><strong>零脚本</strong> — 所有 toast、身份注册与点击聚焦由常驻 .NET helper 完成，需要 .NET 10 Desktop Runtime</li>
       <li><strong>零侵入</strong> — 不注册服务、不经过模型审批</li>
     </ul>
 
@@ -114,7 +114,10 @@
     <pre><code>dsh plugin --profile web add dsh-notify-win</code></pre>
 
     <h2>📦 安装详情</h2>
-    <pre><code># 前置：pnpm
+    <pre><code># 前置：.NET 10 Desktop Runtime（必需）
+winget install Microsoft.DotNet.DesktopRuntime.10
+
+# 前置：pnpm
 corepack enable
 
 # 安装
