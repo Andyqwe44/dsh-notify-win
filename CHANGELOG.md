@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Clicking a toast now behaves like the DSH tray icon: a window hidden to the
+  tray is shown again, a minimized one is restored, a maximized one stays
+  maximized, and the foreground switch is forced (a single Alt keystroke is
+  used when Windows refuses a background process) so DSH really comes to the
+  front. Previously `SW_RESTORE` un-maximized the window, and a background
+  process's `SetForegroundWindow` could be refused.
 - The timeout taskbar flash now uses `FLASHW_TRAY | FLASHW_TIMERNOFG`
   (`2 | 12`), so Windows stops it as soon as DSH comes to the foreground. The
   helper no longer runs a 3-second re-pulse loop: that loop was also the only

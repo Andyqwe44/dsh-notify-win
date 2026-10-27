@@ -81,6 +81,10 @@ check(/case "notify":/.test(source), 'helper handles the non-interactive notify 
 check(/static bool ShowToast/.test(source), 'helper owns toast delivery')
 check(/static void EnsureToastIdentity/.test(source), 'helper owns the toast identity')
 check(/static void FocusDsh/.test(source), 'helper owns click-to-focus')
+check(
+  /FindDshWindow\(includeHidden: true\)/.test(source) && /keybd_event\(/.test(source),
+  'click-to-focus shows a hidden window and forces the foreground',
+)
 
 console.log(failed ? 'FLASH POLICY TEST FAILED' : 'FLASH POLICY TEST PASSED')
 if (failed) process.exit(1)

@@ -24,8 +24,15 @@ static partial class Program
     // ---------------------------------------------------------------------
     // Focus / launch DSH. The resident helper handles Activated in-process;
     // --focus covers a click on a toast after DSH/helper restarted, and the
-    // dsh-notify:// protocol.
+    // dsh-notify:// protocol. A toast click should behave like clicking the
+    // DSH tray icon: show the window if it is hidden, restore it if minimized,
+    // and bring it to the front.
     // ---------------------------------------------------------------------
+    const int SwShow = 5;
+    const int SwRestore = 9;
+    const byte VkMenu = 0x12;
+    const uint KeyeventfKeyup = 0x2;
+
     static void FocusDsh()
     {
         try
@@ -34,11 +41,15 @@ static partial class Program
             {
                 try
                 {
-                    var hwnd = FindDshWindow();
+                    var hwnd = FindDshWindow(includeHidden: true);
                     if (hwnd != IntPtr.Zero)
                     {
-                        ShowWindow(hwnd, 9); // SW_RESTORE
-                        SetForegroundWindow(hwnd);
+                        // Never call SW_RESTORE on a maximized window: it would
+                        // un-maximize it. Only fix the state that is wrong.
+                        if (IsIconic(hwnd)) ShowWindow(hwnd, SwRestore);
+                        if (!IsWindowVisible(hwnd)) ShowWindow(hwnd, SwShow);
+                        ForceForeground(hwnd);
+                        Log(GetForegroundWindow() == hwnd ? "focus: DSH is in front" : "focus: switch not confirmed");
                         return;
                     }
                     if (!LaunchDshApp()) Log("focus failed: DSH window and app not found");
@@ -57,6 +68,22 @@ static partial class Program
         {
             Log("focus thread failed: " + error.Message);
         }
+    }
+
+    /// <summary>
+    /// Bring the window to the foreground even though the calling process does
+    /// not own the foreground (a toast click is handled by the helper, not by
+    /// DSH). If Windows refuses the first request, a single Alt keystroke marks
+    /// the switch as user-initiated and the retry succeeds. This only runs from
+    /// a toast activation, so it never fires while the user is typing.
+    /// </summary>
+    static void ForceForeground(IntPtr hwnd)
+    {
+        if (GetForegroundWindow() == hwnd) return;
+        if (SetForegroundWindow(hwnd)) return;
+        keybd_event(VkMenu, 0, 0, UIntPtr.Zero);
+        keybd_event(VkMenu, 0, KeyeventfKeyup, UIntPtr.Zero);
+        if (!SetForegroundWindow(hwnd)) Log("focus failed: foreground switch was refused");
     }
 
     static bool LaunchDshApp()
@@ -85,13 +112,18 @@ static partial class Program
         return false;
     }
 
-    static IntPtr FindDshWindow()
+    /// <summary>
+    /// Find the main DSH window. The flash needs a visible window (hidden
+    /// windows have no taskbar button); focus passes includeHidden so a window
+    /// minimized to the tray can be shown again.
+    /// </summary>
+    static IntPtr FindDshWindow(bool includeHidden = false)
     {
         IntPtr exact = IntPtr.Zero;
         IntPtr fallback = IntPtr.Zero;
         EnumWindows((h, l) =>
         {
-            if (!IsWindowVisible(h)) return true;
+            if (!includeHidden && !IsWindowVisible(h)) return true;
             var sb = new StringBuilder(512);
             GetWindowText(h, sb, sb.Capacity);
             string title = sb.ToString();

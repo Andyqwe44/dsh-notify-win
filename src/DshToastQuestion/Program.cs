@@ -50,6 +50,9 @@ static partial class Program
             return 0;
         }
 
+        // Set before --focus too: a cold toast click needs the same diagnostics.
+        _logPath = GetArg(args, "--log");
+
         // Toast click / dsh-notify:// activation: focus an existing DSH window,
         // or launch the installed PWA when DSH is not running. No script host.
         if (HasFlag(args, "--focus"))
@@ -65,8 +68,6 @@ static partial class Program
             await Task.Delay(200);
             return 2;
         }
-
-        _logPath = GetArg(args, "--log");
 
         // Tag names only need to be unique within one Windows toast source.
         // Seeding from the pid keeps two helper instances (a hot-reload overlap)
