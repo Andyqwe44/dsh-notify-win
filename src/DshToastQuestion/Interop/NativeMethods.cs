@@ -28,6 +28,9 @@ static partial class Program
     [DllImport("user32.dll")]
     static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
     [DllImport("user32.dll")]
     static extern bool FlashWindowEx(ref FLASHWINFO info);
 

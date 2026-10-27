@@ -32,6 +32,12 @@ static partial class Program
     const int SwRestore = 9;
     const byte VkMenu = 0x12;
     const uint KeyeventfKeyup = 0x2;
+    static readonly IntPtr HwndTopmost = new(-1);
+    static readonly IntPtr HwndNotTopmost = new(-2);
+    const uint SwpNomove = 0x2;
+    const uint SwpNosize = 0x1;
+    const uint SwpNoactivate = 0x10;
+    const uint SwpShowWindow = 0x40;
 
     static void FocusDsh()
     {
@@ -73,9 +79,11 @@ static partial class Program
     /// <summary>
     /// Bring the window to the foreground even though the calling process does
     /// not own the foreground (a toast click is handled by the helper, not by
-    /// DSH). If Windows refuses the first request, a single Alt keystroke marks
-    /// the switch as user-initiated and the retry succeeds. This only runs from
-    /// a toast activation, so it never fires while the user is typing.
+    /// DSH). A plain request is tried first; a single Alt keystroke marks the
+    /// next one as user-initiated. A full-screen foreground app (video player,
+    /// game) can refuse both, so the last resort raises DSH above it for the
+    /// switch and then restores the normal Z-order. This only runs from a toast
+    /// activation.
     /// </summary>
     static void ForceForeground(IntPtr hwnd)
     {
@@ -85,6 +93,10 @@ static partial class Program
         keybd_event(VkMenu, 0, 0, UIntPtr.Zero);
         keybd_event(VkMenu, 0, KeyeventfKeyup, UIntPtr.Zero);
         SetForegroundWindow(hwnd);
+        if (GetForegroundWindow() == hwnd) return;
+        SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNomove | SwpNosize | SwpShowWindow);
+        SetForegroundWindow(hwnd);
+        SetWindowPos(hwnd, HwndNotTopmost, 0, 0, 0, 0, SwpNomove | SwpNosize | SwpNoactivate);
         if (GetForegroundWindow() != hwnd) Log("focus failed: foreground switch was refused");
     }
 
