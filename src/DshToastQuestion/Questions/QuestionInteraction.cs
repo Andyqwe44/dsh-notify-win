@@ -37,12 +37,12 @@ static partial class Program
                     ["sessionId"] = flow.Session,
                 });
                 // Cancelling is honest: nothing was sent to the agent, and the
-                // confirmation says exactly that.
-                ShowStatus(flow, new[]
-                {
-                    "已取消",
-                    "没有向 DSH 提交任何答案。",
-                }, "short");
+                // confirmation says exactly that. For an approval request the
+                // host hands the decision back to DSH's own approval panel, so
+                // "已转到 DSH" is the accurate message.
+                ShowStatus(flow, flow.Approval
+                    ? new[] { "已转到 DSH", "请在 DSH 的审批面板中处理。" }
+                    : new[] { "已取消", "没有向 DSH 提交任何答案。" }, "short");
                 RemoveToast(flow.QuestionTag, QuestionGroup);
                 FinishFlow(flow);
                 Log("cancelled: " + flow.Id);
@@ -148,6 +148,9 @@ static partial class Program
 
         RemoveToast(flow.QuestionTag, QuestionGroup);
         Log("answer submitted: " + flow.Id);
+        // An approval answer is consumed by the approval waterfall, not by the
+        // question receipt pipeline, so the flow is done once it is sent.
+        if (flow.Approval) FinishFlow(flow);
     }
 
     static List<AnswerItem> BuildAnswers(QuestionFlow flow)

@@ -115,12 +115,16 @@ static partial class Program
                   .Append("\"/>");
             }
             sb.Append("</input>");
-            sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选，填了会覆盖选择）\"");
-            if (draft.Custom.Length > 0)
+            // A fixed-choice question (an approval) has no free-text override.
+            if (!q.NoCustom)
             {
-                sb.Append(" defaultInput=\"").Append(XmlEscape(draft.Custom)).Append('"');
+                sb.Append("<input id=\"custom\" type=\"text\" placeHolderContent=\"自定义答案（可选，填了会覆盖选择）\"");
+                if (draft.Custom.Length > 0)
+                {
+                    sb.Append(" defaultInput=\"").Append(XmlEscape(draft.Custom)).Append('"');
+                }
+                sb.Append("/>");
             }
-            sb.Append("/>");
         }
         else
         {

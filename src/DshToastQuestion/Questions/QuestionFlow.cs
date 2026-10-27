@@ -18,6 +18,7 @@ static partial class Program
         public string Title = "";
         public string Body = "";
         public string Duration = "short";
+        public bool Approval;
         public List<QuestionData> Questions = new();
         public PageDraft[] Drafts = Array.Empty<PageDraft>();
         public int Current;
@@ -46,6 +47,7 @@ static partial class Program
             Title = message.Title ?? "",
             Body = message.Body ?? "",
             Duration = message.Duration ?? "short",
+            Approval = message.Approval,
             Questions = questions,
             Drafts = questions.Select(_ => new PageDraft()).ToArray(),
             TagSeq = Interlocked.Increment(ref _tagSeq),

@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   window is activated, so the shell's flash-tick / fade tail is no longer
   visible. The question flow is unchanged (submit/cancel/`resolved` still call
   `FLASHW_STOP`).
+- Approval requests are now interactive: they use the same fixed-choice
+  single-select card as the question flow (`允许一次` / `拒绝`, no free-text
+  input) and the answer claims the `approval/request` waterfall. The toast uses
+  the new `approvalToastDuration` (default `long`); cancelling it hands the
+  request to DSH's own approval panel, and an aborted turn retires it. The
+  helper retires an approval flow as soon as its answer is sent.
 - The answer receipt now shows the model's **first line** instead of its first
   sentence: the line is filled to the toast width and cut with `…` (one
   full-width cell) when it is longer. The receipt fires when that line ends or

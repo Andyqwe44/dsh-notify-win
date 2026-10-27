@@ -18,6 +18,7 @@
 #                               dedupMs: 1500
 #                               questionToastDuration: short
 #                               doneToastDuration: short
+#                               approvalToastDuration: long
 #                               helperLog: ''
 #                               answerPendingTimeoutMs: 30000
 #                               answerSpeechTimeoutMs: 90000

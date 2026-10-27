@@ -19,6 +19,10 @@ static partial class Program
         [JsonPropertyName("multiSelect")]
         public bool MultiSelectCamel { get; set; }
 
+        /// <summary>A fixed-choice question (approval): no free-text override.</summary>
+        [JsonPropertyName("noCustom")]
+        public bool NoCustom { get; set; }
+
         [JsonExtensionData]
         public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
@@ -59,6 +63,8 @@ static partial class Program
         public string? Launch { get; set; }
         public List<QuestionData>? Questions { get; set; }
         public string? Duration { get; set; }
+        /// <summary>True when this question flow answers an approval request.</summary>
+        public bool Approval { get; set; }
         public string? State { get; set; }
         public string? Detail { get; set; }
         public string? Reason { get; set; }

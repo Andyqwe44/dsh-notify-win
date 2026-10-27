@@ -41,8 +41,7 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   h.dispose()
 }
 
-// --- Case B: subagent skipped, waterfall next() always called, tool filter,
-//             same-session question burst collapses (anti-spam). ---
+// --- Case B: subagent skipped, tool filter, ask_user_question question op. ---
 {
   const h = createHarness(plugin, { dedupMs: 1500 })
   await h.start()
@@ -54,20 +53,90 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   h.handlers['agent/status']({ status: 'idle', agent: child })
   // running -> nothing
   h.handlers['agent/status']({ status: 'running', agent: root })
-  // approval root + next()
-  h.handlers['approval/request']({ agent: root, reason: '允许?' }, () => { nextCalls.push('approval'); return 'ok' })
-  // ask_user_question SAME session within dedup window -> notification suppressed
-  h.handlers['tools/execute']({ name: 'ask_user_question', agent: root }, () => { nextCalls.push('tool'); return 'ok' })
-  // other tool -> next but no notification
+  // ask_user_question -> a question toast (not a notify)
+  h.handlers['tools/execute']({
+    name: 'ask_user_question',
+    agent: root,
+    callId: 'call-1',
+    arguments: { questions: [{ id: 'q1', question: '选哪个？', options: [{ label: 'A' }, { label: 'B' }] }] },
+  }, () => { nextCalls.push('tool'); return 'ok' })
+  // other tool -> next but no toast
   h.handlers['tools/execute']({ name: 'pwsh', agent: root }, () => { nextCalls.push('pwsh'); return 'ok' })
 
   await YIELD()
+  const questions = h.helper().writes.filter((w) => w.op === 'question' && w.approval !== true)
   const notes = notesOf(h)
-  const bOk =
-    notes.length === 1 && notes[0].kind === 'question' &&
-    nextCalls.join(',') === 'approval,tool,pwsh'
-  console.log(`Case B skip/waterfall/same-session-collapse: notifications=${notes.length}, next=${nextCalls.join(',')} -> ${bOk ? 'PASS' : 'FAIL'}`)
+  const bOk = questions.length === 1 && questions[0].questions.length === 1 &&
+    notes.length === 0 && nextCalls.join(',') === 'tool,pwsh'
+  console.log(`Case B skip/waterfall/ask-toast: questions=${questions.length}, notifications=${notes.length}, next=${nextCalls.join(',')} -> ${bOk ? 'PASS' : 'FAIL'}`)
   if (!bOk) process.exit(1)
+  h.dispose()
+}
+
+// --- Case B2: an approval request is answered by the interactive toast. ---
+{
+  const h = createHarness(plugin, { dedupMs: 0 })
+  await h.start()
+  const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
+  const nextCalls = []
+  const pending = h.handlers['approval/request'](
+    { agent: root, toolName: 'pwsh', reason: '允许执行?', signal: new AbortController().signal },
+    () => { nextCalls.push('approval'); return 'fallback' },
+  )
+  await YIELD()
+  const approval = h.helper().writes.find((w) => w.op === 'question' && w.approval === true)
+  const promptOk = approval !== undefined &&
+    approval.questions?.[0]?.noCustom === true &&
+    approval.questions?.[0]?.options?.map((option) => option.label).join(',') === '允许一次,拒绝'
+  if (approval !== undefined) {
+    h.helper().emit({ ev: 'answer', id: approval.id, sessionId: 'root', answers: [{ id: 'approval', selected: ['允许一次'] }] })
+  }
+  const outcome = await pending
+  const b2Ok = promptOk && outcome === 'allowed-once' && nextCalls.length === 0
+  console.log(`Case B2 approval toast: prompt=${promptOk}, outcome=${outcome}, next=${nextCalls.length} -> ${b2Ok ? 'PASS' : 'FAIL'}`)
+  if (!b2Ok) process.exit(1)
+  h.dispose()
+}
+
+// --- Case B3: cancelling the approval toast delegates to DSH's panel. ---
+{
+  const h = createHarness(plugin, { dedupMs: 0 })
+  await h.start()
+  const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
+  const nextCalls = []
+  const pending = h.handlers['approval/request'](
+    { agent: root, toolName: 'pwsh', reason: '切换一下' },
+    () => { nextCalls.push('approval'); return 'fallback' },
+  )
+  await YIELD()
+  const approval = h.helper().writes.find((w) => w.op === 'question' && w.approval === true)
+  if (approval !== undefined) h.helper().emit({ ev: 'cancel', id: approval.id, sessionId: 'root' })
+  const outcome = await pending
+  const b3Ok = outcome === 'fallback' && nextCalls.join(',') === 'approval'
+  console.log(`Case B3 approval cancel: outcome=${outcome}, next=${nextCalls.join(',')} -> ${b3Ok ? 'PASS' : 'FAIL'}`)
+  if (!b3Ok) process.exit(1)
+  h.dispose()
+}
+
+// --- Case B4: an aborted approval retires the toast and never delegates. ---
+{
+  const h = createHarness(plugin, { dedupMs: 0 })
+  await h.start()
+  const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
+  const nextCalls = []
+  const controller = new AbortController()
+  const pending = h.handlers['approval/request'](
+    { agent: root, toolName: 'pwsh', reason: '已取消的回合', signal: controller.signal },
+    () => { nextCalls.push('approval'); return 'fallback' },
+  )
+  await YIELD()
+  const approval = h.helper().writes.find((w) => w.op === 'question' && w.approval === true)
+  controller.abort()
+  const outcome = await pending
+  const retired = h.helper().writes.find((w) => w.op === 'status' && w.id === approval?.id)
+  const b4Ok = outcome === 'cancelled' && retired?.state === 'resolved' && nextCalls.length === 0
+  console.log(`Case B4 approval abort: outcome=${outcome}, retired=${retired?.state}, next=${nextCalls.length} -> ${b4Ok ? 'PASS' : 'FAIL'}`)
+  if (!b4Ok) process.exit(1)
   h.dispose()
 }
 
@@ -76,7 +145,7 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
 {
   const h = createHarness(plugin, { dedupMs: 0 })
   await h.start()
-  const root = { session: { id: 'root', header: { delegationDepth: 0 } } }
+  const root = { session: { id: 'sess-C', header: { delegationDepth: 0 } } }
   h.handlers['agent/status']({ status: 'idle', agent: root })
   h.handlers['agent/status']({ status: 'idle', agent: root })
   await YIELD()
@@ -87,18 +156,25 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   h.dispose()
 }
 
-// --- Case D: different-session "done" + "question" close together each notify. ---
+// --- Case D: a done toast in one session and an interactive approval in
+//             another do not suppress each other. ---
 {
   const h = createHarness(plugin, { dedupMs: 1500 })
   await h.start()
   const a = { session: { id: 'A', header: { delegationDepth: 0 } } }
   const b = { session: { id: 'B', header: { delegationDepth: 0 } } }
+  const pending = h.handlers['approval/request']({ agent: b, reason: '允许?' }, () => 'fallback')
   h.handlers['agent/status']({ status: 'idle', agent: a })
-  h.handlers['approval/request']({ agent: b, reason: '允许?' }, () => 'ok')
   await YIELD()
-  const kinds = notesOf(h).map((note) => note.kind).sort()
-  const dOk = kinds.length === 2 && kinds[0] === 'done' && kinds[1] === 'question'
-  console.log(`Case D cross-session burst: ${kinds.length} notifications, kinds=${JSON.stringify(kinds)} -> ${dOk ? 'PASS' : 'FAIL'}`)
+  const notes = notesOf(h)
+  const approval = h.helper().writes.find((w) => w.op === 'question' && w.approval === true)
+  if (approval !== undefined) {
+    h.helper().emit({ ev: 'answer', id: approval.id, sessionId: 'B', answers: [{ id: 'approval', selected: ['拒绝'] }] })
+  }
+  const outcome = await pending
+  const dOk = notes.length === 1 && notes[0].kind === 'done' &&
+    approval?.sessionId === 'B' && outcome === 'rejected'
+  console.log(`Case D cross-session done+approval: notifications=${notes.length}, approval=${outcome} -> ${dOk ? 'PASS' : 'FAIL'}`)
   if (!dOk) process.exit(1)
   h.dispose()
 }

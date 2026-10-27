@@ -104,7 +104,7 @@ dsh plugin --profile web add dsh-notify-win
 
 - Windows 10/11（x64）
 - DeepSeek Harness，任意 profile（推荐 `web`）
-- .NET 10 Desktop Runtime（x64）— **必需**：常驻 .NET helper 是唯一的通知实现。完成/压缩/告警/取消/审批以及交互问题全部走它。用 `winget install Microsoft.DotNet.DesktopRuntime.10` 或从 <https://dotnet.microsoft.com/download/dotnet/10.0> 安装。不再使用 PowerShell 脚本。
+- .NET 10 Desktop Runtime（x64）— **必需**：常驻 .NET helper 是唯一的通知实现。完成/压缩/告警/取消、交互审批以及交互问题全部走它。用 `winget install Microsoft.DotNet.DesktopRuntime.10` 或从 <https://dotnet.microsoft.com/download/dotnet/10.0> 安装。不再使用 PowerShell 脚本。
 
 ## 配置
 
@@ -123,7 +123,8 @@ dsh plugin --profile web add dsh-notify-win
     askBody: '助手向你提了一个问题，请切换到 DeepSeek Harness 查看。'
     dedupMs: 1500              # 两次通知之间的去重窗口（毫秒）
     questionToastDuration: 'short'  # 'short'（约5秒）或 'long'（约25秒），用于 ask_user_question 交互 toast
-    doneToastDuration: 'short'      # 'short'（约5秒）或 'long'（约25秒），用于完成/压缩/告警/审批 toast
+    doneToastDuration: 'short'      # 'short' 或 'long'，用于完成/压缩/告警/取消 toast
+    approvalToastDuration: 'long'   # 'short' 或 'long'，用于交互式审批请求
     helperLog: ''              # 可选：helper 协议/toast 诊断日志路径
     answerPendingTimeoutMs: 30000  # 暂存的答案最多等浏览器端多久，超时才提示
     answerSpeechTimeoutMs: 90000   # 送达后等待模型第一行的上限
@@ -184,8 +185,9 @@ dsh plugin --profile web add dsh-notify-win
 | --- | --- |
 | 「完成/告警/取消」触发 | `session/event` → `turn/end` 原因缓存 + `agent/status` 的 `idle`（仅根 agent） |
 | 「压缩完成 / 压缩失败」触发 | `session/event` → `compaction/end` |
-| 「待回答」触发 | `approval/request` 瀑布 + `ask_user_question` 的 `tools/execute` |
-| 完成/压缩/告警/取消/审批 toast | 常驻 .NET helper 的 `notify` op；WinRT `Windows.UI.Notifications`，失败回退 `NotifyIcon` 气泡。不再为每条通知启动进程 |
+| 「待回答」触发 | `approval/request` 瀑布（在 toast 里作答）+ `ask_user_question` 的 `tools/execute` |
+| 完成/压缩/告警/取消 toast | 常驻 .NET helper 的 `notify` op；WinRT `Windows.UI.Notifications`，失败回退 `NotifyIcon` 气泡。不再为每条通知启动进程 |
+| 交互审批 toast | `approval/request` 在瀑布里被同一套 `question` op 接管：单张固定选项卡片（`允许一次` / `拒绝`），没有自定义输入。点「取消」把决定交回 DSH 自己的审批面板；回合取消/中止时撤掉 toast |
 | 交互问题 toast | 常驻 .NET helper 的 `question` op，通过子进程 stdin/stdout 的 JSON 行通信。单题一张卡；多题一张分页卡（`问题 i/n`、上一题/下一题/提交），每页草稿通过 toast 的 `defaultInput` 属性恢复 |
 | 回答回执 | helper 上报选择并收起问题 toast → 宿主暂存给浏览器端并核对 `ask_user_question` 的 tool result → 只弹一条带模型第一行的 `spoken`（铺满一行、超出以 … 截断，无标题行）；没有 pending / delivered toast |
 | 身份 / 协议 / 点击聚焦 | helper 启动时注册 AUMID、Start Menu 快捷方式和 `dsh-notify://`；点击 toast 由 helper 在进程内聚焦 DSH（冷启动走 `--focus`） |

@@ -104,7 +104,7 @@ dsh plugin --profile web add dsh-notify-win
 
 - Windows 10/11 (x64)
 - DeepSeek Harness, any profile (`web` recommended)
-- .NET 10 Desktop Runtime (x64) — **required**: the resident toast helper is the only notification implementation. All toasts (done / compact / alert / notice / approval and interactive questions) go through it. Install with `winget install Microsoft.DotNet.DesktopRuntime.10` or from <https://dotnet.microsoft.com/download/dotnet/10.0>. No PowerShell script is used.
+- .NET 10 Desktop Runtime (x64) — **required**: the resident toast helper is the only notification implementation. All toasts (done / compact / alert / notice, interactive approval and questions) go through it. Install with `winget install Microsoft.DotNet.DesktopRuntime.10` or from <https://dotnet.microsoft.com/download/dotnet/10.0>. No PowerShell script is used.
 
 ## Configuration
 
@@ -123,7 +123,8 @@ Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
     askBody: 'The assistant asked you something.'
     dedupMs: 1500              # suppress duplicate notifications within this window
     questionToastDuration: 'short'  # 'short' (~5s) or 'long' (~25s) for ask_user_question toasts
-    doneToastDuration: 'short'      # 'short' (~5s) or 'long' (~25s) for done/compact/alert/notice/approval toasts
+    doneToastDuration: 'short'      # 'short' (~5s) or 'long' (~25s) for done/compact/alert/notice toasts
+    approvalToastDuration: 'long'   # 'short' or 'long' for interactive approval requests
     helperLog: ''              # optional file for helper protocol/toast diagnostics
     answerPendingTimeoutMs: 30000  # how long a parked answer waits for the browser half before warning
     answerSpeechTimeoutMs: 90000   # how long to wait for the model's first line after delivery
@@ -195,8 +196,9 @@ reason, so the plugin reports the retry count from the last retry record
 | --- | --- |
 | Trigger "done"/alert/notice | `session/event` → `turn/end` reason cache + `agent/status` `idle` (root agents only) |
 | Trigger "compact" / compaction failure | `session/event` → `compaction/end` |
-| Trigger "question" | `approval/request` waterfall + `tools/execute` for `ask_user_question` |
-| Done/compact/alert/notice/approval toast | Resident .NET helper `notify` op; WinRT `Windows.UI.Notifications`, `NotifyIcon` balloon fallback. No per-notification process |
+| Trigger "question" | `approval/request` waterfall (answered in the toast) + `tools/execute` for `ask_user_question` |
+| Done/compact/alert/notice toast | Resident .NET helper `notify` op; WinRT `Windows.UI.Notifications`, `NotifyIcon` balloon fallback. No per-notification process |
+| Interactive approval toast | `approval/request` claims the waterfall with the same `question` op: one fixed-choice card (`允许一次` / `拒绝`), no free-text input. Cancelling the toast hands the request to DSH's own approval panel; cancelling/aborting the turn retires the toast |
 | Interactive question toast | Resident .NET helper `question` op, spoken to over the child's stdin/stdout (newline-delimited JSON). One question = one card; several questions = one paged card (`问题 i/n`, 上一题/下一题/提交), with each page's draft restored through the toast `defaultInput` attribute |
 | Question answer receipt | The helper reports the selection and dismisses the question toast; the host parks it for the browser half, checks the `ask_user_question` tool result, then shows exactly one toast — `spoken` with the model's first line (filled to the toast width, cut with `…`). No pending, delivered or title toast |
 | Toast identity / protocol / focus | Helper startup registers the branded AUMID, Start Menu shortcut and `dsh-notify://` handler; clicking a toast focuses DSH in-process (or via `--focus` on the cold path) |
