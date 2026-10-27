@@ -2,8 +2,10 @@
 //
 // The taskbar flash must stay OS-owned: FLASHW_TRAY | FLASHW_TIMERNOFG
 // (2 | 12), uCount 0. Windows stops it when the DSH window comes to the
-// foreground; an explicit FLASHW_STOP ends it when a question is resolved
-// elsewhere. A periodic re-pulse (the old 3-second loop) must not come back.
+// foreground; the helper also remembers the armed window and stops it itself
+// as soon as DSH is in front, so Explorer's flash-tick delay is not visible.
+// An explicit FLASHW_STOP ends it when a question is resolved elsewhere. A
+// periodic re-pulse (the old 3-second loop) must not come back.
 //
 // The notification path is now .NET-only. This test also pins that the
 // PowerShell/VBS scripts are really gone, so a future change cannot quietly
@@ -68,6 +70,12 @@ check(
   'helper stops the flash on the answer/resolve paths',
 )
 check(/GetForegroundWindow/.test(source), 'helper does not arm a flash while DSH is foreground')
+check(/_flashHwnd/.test(source), 'helper remembers the armed window for an explicit stop')
+check(
+  /SetWinEventHook\(\s*EventSystemForeground/.test(source) &&
+    /static void OnForegroundChanged/.test(source),
+  'helper stops the flash as soon as a DSH window is foreground',
+)
 
 check(/case "notify":/.test(source), 'helper handles the non-interactive notify op')
 check(/static bool ShowToast/.test(source), 'helper owns toast delivery')

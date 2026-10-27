@@ -25,6 +25,45 @@ static partial class Program
     [DllImport("user32.dll")]
     static extern bool FlashWindowEx(ref FLASHWINFO info);
 
+    delegate void WinEventProc(IntPtr hook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint idEventThread, uint msEventTime);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
+        WinEventProc proc, uint idProcess, uint idThread, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    static extern bool UnhookWinEvent(IntPtr hook);
+
+    [DllImport("user32.dll")]
+    static extern int GetMessage(out MSG msg, IntPtr hwnd, uint msgFilterMin, uint msgFilterMax);
+
+    [DllImport("user32.dll")]
+    static extern bool PeekMessage(out MSG msg, IntPtr hwnd, uint msgFilterMin, uint msgFilterMax, uint removeMsg);
+
+    [DllImport("user32.dll")]
+    static extern bool TranslateMessage(ref MSG msg);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr DispatchMessage(ref MSG msg);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public UIntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct POINT
+    {
+        public int x;
+        public int y;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     struct FLASHWINFO
     {

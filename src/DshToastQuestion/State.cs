@@ -33,12 +33,19 @@ static partial class Program
     static NotifyIcon? _balloon;
 
     // Taskbar flash policy (the only implementation left). FLASHW_TRAY |
-    // FLASHW_TIMERNOFG lets the shell own the stop condition: the taskbar
-    // button stops flashing as soon as the DSH window comes to the foreground.
-    // There is deliberately no re-pulse timer; a periodic one had no stop
-    // condition of its own and kept flashing after a toast was answered or
-    // after DSH was already back in front.
+    // FLASHW_TIMERNOFG arms a shell flash that ends when the DSH window comes
+    // to the foreground. A small watcher also sends FLASHW_STOP as soon as DSH
+    // is actually in front, because Explorer reacts on its next flash tick
+    // (and can miss the target if another DSH window was activated). There is
+    // deliberately no re-pulse timer; a periodic one had no stop condition of
+    // its own and kept flashing after a toast was answered or after DSH was
+    // already back in front.
     const uint FlashTray = 0x2;
     const uint FlashTimerNoForeground = 0xC;
     const uint FlashStop = 0x0;
+
+    // Foreground watcher: EVENT_SYSTEM_FOREGROUND delivered out of context so
+    // the helper can stop the flash as soon as a DSH window is activated.
+    const uint EventSystemForeground = 0x0003;
+    const uint WineventOutOfContext = 0x0000;
 }

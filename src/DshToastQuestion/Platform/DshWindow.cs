@@ -3,12 +3,14 @@ namespace DshToastQuestion;
 static partial class Program
 {
     /// <summary>Whether DSH is already the foreground window.</summary>
-    static bool TestDshWindowFocused()
+    static bool TestDshWindowFocused() => IsDshWindow(GetForegroundWindow());
+
+    /// <summary>Whether the window belongs to DSH, judged by its title.</summary>
+    static bool IsDshWindow(IntPtr hwnd)
     {
+        if (hwnd == IntPtr.Zero) return false;
         try
         {
-            var hwnd = GetForegroundWindow();
-            if (hwnd == IntPtr.Zero) return false;
             var sb = new StringBuilder(512);
             GetWindowText(hwnd, sb, sb.Capacity);
             return sb.ToString().Contains(BrandName, StringComparison.OrdinalIgnoreCase);

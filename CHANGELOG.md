@@ -23,8 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Program.cs`. All generated files live under `artifacts/` (gitignored);
   `npm run build` publishes there and stages only the final exe into `lib/`.
 - All toasts now flash only after Windows dismisses them by timeout; the flash
-  stops when DSH comes to the foreground. The helper's question flow is
-  unchanged (submit/cancel/`resolved` still call `FLASHW_STOP`).
+  stops when DSH comes to the foreground. The helper also remembers the armed
+  window and sends `FLASHW_STOP` on `EVENT_SYSTEM_FOREGROUND` as soon as a DSH
+  window is activated, so the shell's flash-tick / fade tail is no longer
+  visible. The question flow is unchanged (submit/cancel/`resolved` still call
+  `FLASHW_STOP`).
 - The answer receipt now shows the model's **first line** instead of its first
   sentence: the line is filled to the toast width and cut with `…` (one
   full-width cell) when it is longer. The receipt fires when that line ends or
