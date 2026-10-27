@@ -50,10 +50,23 @@ static partial class Program
                     var hwnd = FindDshWindow(includeHidden: true);
                     if (hwnd != IntPtr.Zero)
                     {
+                        // A window hidden to the tray must be shown by the app
+                        // itself: ShowWindow only reveals the native frame and
+                        // leaves Chromium's renderer suspended, so the window
+                        // would ignore mouse input. dsh://open runs the same
+                        // focusPrimaryWindow path as the tray icon.
+                        if (!IsWindowVisible(hwnd))
+                        {
+                            ActivateDshApp();
+                            long deadline = Environment.TickCount64 + 2500;
+                            while (!IsWindowVisible(hwnd) && Environment.TickCount64 < deadline) Thread.Sleep(50);
+                            var shown = FindDshWindow(includeHidden: true);
+                            if (shown != IntPtr.Zero) hwnd = shown;
+                        }
                         // Never call SW_RESTORE on a maximized window: it would
                         // un-maximize it. Only fix the state that is wrong.
                         if (IsIconic(hwnd)) ShowWindow(hwnd, SwRestore);
-                        if (!IsWindowVisible(hwnd)) ShowWindow(hwnd, SwShow);
+                        if (!IsWindowVisible(hwnd)) ShowWindow(hwnd, SwShow); // last resort
                         ForceForeground(hwnd);
                         Log(GetForegroundWindow() == hwnd ? "focus: DSH is in front" : "focus: switch not confirmed");
                         return;
@@ -98,6 +111,20 @@ static partial class Program
         SetForegroundWindow(hwnd);
         SetWindowPos(hwnd, HwndNotTopmost, 0, 0, 0, 0, SwpNomove | SwpNosize | SwpNoactivate);
         if (GetForegroundWindow() != hwnd) Log("focus failed: foreground switch was refused");
+    }
+
+    /// <summary>Ask the running DSH desktop app to show its window (tray path).</summary>
+    static void ActivateDshApp()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("dsh://open") { UseShellExecute = true });
+            Log("activated DSH app");
+        }
+        catch (Exception error)
+        {
+            Log("activate DSH app failed: " + error.Message);
+        }
     }
 
     static bool LaunchDshApp()

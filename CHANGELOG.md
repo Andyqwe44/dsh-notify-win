@@ -64,10 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   used when Windows refuses a background process) so DSH really comes to the
   front. Previously `SW_RESTORE` un-maximized the window, and a background
   process's `SetForegroundWindow` could be refused.
-- Clicking a toast now also opens DSH when a full-screen foreground app (video
-  player, game) refuses the normal foreground switch: the helper raises the
-  window topmost for the switch and restores the normal Z-order afterwards.
-  Before this, the window was shown but stayed behind the full-screen app.
+- Clicking a toast now opens DSH through the app's own `dsh://open` path when
+  the window is hidden to the tray (the same `focusPrimaryWindow` as the tray
+  icon), so Chromium's renderer resumes and the window accepts the mouse. A
+  window shown natively used to appear but ignore clicks and hover. When a
+  full-screen foreground app refuses the follow-up foreground switch, the
+  helper raises the window topmost for the switch and restores the normal
+  Z-order afterwards.
 - The timeout taskbar flash now uses `FLASHW_TRAY | FLASHW_TIMERNOFG`
   (`2 | 12`), so Windows stops it as soon as DSH comes to the foreground. The
   helper no longer runs a 3-second re-pulse loop: that loop was also the only
