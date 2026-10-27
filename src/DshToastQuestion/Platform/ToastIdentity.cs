@@ -25,7 +25,8 @@ static partial class Program
             @"Microsoft\Windows\Start Menu\Programs",
             ShortcutFileName);
         bool registered = string.Equals(key.GetValue("ShortcutRegistered") as string, "1", StringComparison.Ordinal);
-        if (registered && File.Exists(lnk) && ShortcutTargets(lnk, exe)) return;
+        if (registered && File.Exists(lnk) && ShortcutTargets(lnk, exe) &&
+            string.Equals(ShortcutArguments(lnk), "--focus", StringComparison.Ordinal)) return;
         if (!File.Exists(ico) || !File.Exists(exe)) return;
 
         var shellType = Type.GetTypeFromProgID("WScript.Shell");
@@ -33,7 +34,10 @@ static partial class Program
         dynamic shell = Activator.CreateInstance(shellType)!;
         dynamic shortcut = shell.CreateShortcut(lnk);
         shortcut.TargetPath = exe;
-        shortcut.Arguments = "";
+        // A toast body click launches the shortcut when the in-process
+        // activation is not delivered; --focus makes that cold path focus DSH
+        // instead of starting the exe in its no-argument mode.
+        shortcut.Arguments = "--focus";
         shortcut.IconLocation = ico + ",0";
         shortcut.Description = "DeepSeek Harness notifications";
         shortcut.WindowStyle = 7;
@@ -71,6 +75,22 @@ static partial class Program
         catch
         {
             return false;
+        }
+    }
+
+    static string ShortcutArguments(string lnkPath)
+    {
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType == null) return "";
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            dynamic shortcut = shell.CreateShortcut(lnkPath);
+            return (shortcut.Arguments as string) ?? "";
+        }
+        catch
+        {
+            return "";
         }
     }
 

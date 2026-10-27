@@ -71,6 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   full-screen foreground app refuses the follow-up foreground switch, the
   helper raises the window topmost for the switch and restores the normal
   Z-order afterwards.
+- A toast body click that cold-starts the helper (the shortcut path, with no
+  `--focus` argument) now focuses DSH instead of exiting with code 2, so the
+  click works even when the in-process activation is not delivered. The Start
+  Menu shortcut also carries `--focus` and is recreated when that argument is
+  missing.
 - The timeout taskbar flash now uses `FLASHW_TRAY | FLASHW_TIMERNOFG`
   (`2 | 12`), so Windows stops it as soon as DSH comes to the foreground. The
   helper no longer runs a 3-second re-pulse loop: that loop was also the only

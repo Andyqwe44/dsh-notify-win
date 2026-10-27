@@ -63,10 +63,11 @@ static partial class Program
 
         if (!HasFlag(args, "--serve"))
         {
-            // No supported mode: fail fast instead of waiting on a stdin that
-            // nobody owns.
-            await Task.Delay(200);
-            return 2;
+            // A toast body click (or the Start Menu shortcut) can start this exe
+            // without arguments. That is the focus request; there is no other
+            // supported argument-less mode.
+            FocusDsh();
+            return 0;
         }
 
         // Tag names only need to be unique within one Windows toast source.
