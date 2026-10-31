@@ -13,7 +13,9 @@ static partial class Program
     {
         if (TestDshWindowFocused())
         {
-            Log("notify skipped: DSH is focused");
+            var fg = GetForegroundWindow();
+            Log("notify skipped: DSH is focused (fg=" + fg.ToString() + " visible=" + IsWindowVisible(fg) +
+                " iconic=" + IsIconic(fg) + ")");
             return;
         }
 

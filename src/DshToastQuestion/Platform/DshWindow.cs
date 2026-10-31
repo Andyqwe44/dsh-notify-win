@@ -2,8 +2,17 @@ namespace DshToastQuestion;
 
 static partial class Program
 {
-    /// <summary>Whether DSH is already the foreground window.</summary>
-    static bool TestDshWindowFocused() => IsDshWindow(GetForegroundWindow());
+    /// <summary>
+    /// Whether DSH is already the foreground window AND the user can actually see
+    /// it. A window hidden to the tray can keep the foreground slot (Windows only
+    /// moves it when another window is activated), so a hidden window must not
+    /// suppress the toast: the user is not looking at anything.
+    /// </summary>
+    static bool TestDshWindowFocused()
+    {
+        var hwnd = GetForegroundWindow();
+        return IsDshWindow(hwnd) && IsWindowVisible(hwnd) && !IsIconic(hwnd);
+    }
 
     /// <summary>Whether the window belongs to DSH, judged by its title.</summary>
     static bool IsDshWindow(IntPtr hwnd)
@@ -58,8 +67,9 @@ static partial class Program
                         if (!IsWindowVisible(hwnd))
                         {
                             ActivateDshApp();
-                            long deadline = Environment.TickCount64 + 2500;
+                            long deadline = Environment.TickCount64 + 1500;
                             while (!IsWindowVisible(hwnd) && Environment.TickCount64 < deadline) Thread.Sleep(50);
+                            if (!IsWindowVisible(hwnd)) Log("app did not show the window; falling back to ShowWindow");
                             var shown = FindDshWindow(includeHidden: true);
                             if (shown != IntPtr.Zero) hwnd = shown;
                         }

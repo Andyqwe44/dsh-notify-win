@@ -76,6 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   click works even when the in-process activation is not delivered. The Start
   Menu shortcut also carries `--focus` and is recreated when that argument is
   missing.
+- The helper now clears `ELECTRON_RUN_AS_NODE` before it shell-launches the DSH
+  app. The desktop host starts the helper from a Node-mode Electron process, so
+  the variable was inherited; a `dsh://open` launch then started
+  `DeepSeek Harness.exe` as plain Node, which exited immediately with
+  `Cannot find module 'dsh:\open'` and never showed the window. That is why a
+  toast click still did nothing even with the focus path fixed: the window now
+  appears through the app in ~300 ms instead of falling back to a native
+  `ShowWindow` that rendered a frame but ignored the mouse.
+- A tray-hidden DSH window that still holds the foreground slot no longer
+  suppresses the next toast. The "already focused" check now requires a visible,
+  non-minimized window, so closing the GUI to the tray and letting a task finish
+  still pops the completion toast.
 - The timeout taskbar flash now uses `FLASHW_TRAY | FLASHW_TIMERNOFG`
   (`2 | 12`), so Windows stops it as soon as DSH comes to the foreground. The
   helper no longer runs a 3-second re-pulse loop: that loop was also the only

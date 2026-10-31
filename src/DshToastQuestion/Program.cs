@@ -53,6 +53,14 @@ static partial class Program
         // Set before --focus too: a cold toast click needs the same diagnostics.
         _logPath = GetArg(args, "--log");
 
+        // The DSH desktop host starts this helper from a Node-mode Electron
+        // process, so ELECTRON_RUN_AS_NODE is inherited. Shell-launching
+        // "DeepSeek Harness.exe" with that variable still set starts it as plain
+        // Node instead of the desktop app: it dies with MODULE_NOT_FOUND and the
+        // dsh://open activation never reaches the running window. Drop it for the
+        // whole process so every child we start is a real desktop launch.
+        Environment.SetEnvironmentVariable("ELECTRON_RUN_AS_NODE", null);
+
         // Toast click / dsh-notify:// activation: focus an existing DSH window,
         // or launch the installed PWA when DSH is not running. No script host.
         if (HasFlag(args, "--focus"))
