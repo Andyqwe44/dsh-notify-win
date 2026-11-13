@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.7.0-blue)
+![version](https://img.shields.io/badge/version-0.8.0-blue)
 
 ## 📸 Screenshots
 
@@ -22,11 +22,19 @@ English | [中文](README.zh.md)
 
 ![Single-select question toast](docs/assets/screenshots/question-single-select.png)
 
-### Toast timeout → tray badge (default) or taskbar flash (optional)
+### Ignored toast → QQ-style unread badge on DSH's own tray icon
 
-<img src="docs/assets/screenshots/taskbar-flash.png" alt="Tray badge / taskbar flash after toast timeout" style="max-width: 900px; width: 100%;" />
+![Red unread badge blinking on the DSH notification-area icon](docs/assets/screenshots/tray-badge.png)
 
-> Screenshots are from Windows 11. The default reminder after an ignored toast is a red unread badge on DSH's own notification-area icon (the QQ-style dot); the warm taskbar pulse shown above is now opt-in per event.
+### All settings live on the plugin's own page (插件 → dsh-notify-win)
+
+![Per-event notification settings rendered on the plugin page](docs/assets/screenshots/settings-plugin-page.png)
+
+### Optional: warm taskbar flash instead of the badge
+
+<img src="docs/assets/screenshots/taskbar-flash.png" alt="Warm taskbar flash after an ignored toast" style="max-width: 900px; width: 100%;" />
+
+> Screenshots are from Windows 11. The default reminder after an ignored toast is the red unread badge on DSH's own notification-area icon (QQ style); the warm taskbar pulse is opt-in per event, and the notification matrix, its timing and the badge limit are all edited on the plugin's page — nothing is added to Settings.
 
 ## ✨ Features
 

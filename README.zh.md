@@ -6,7 +6,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.7.0-blue)
+![version](https://img.shields.io/badge/version-0.8.0-blue)
 
 ## 📸 截图
 
@@ -22,11 +22,19 @@
 
 ![单选问题 toast](docs/assets/screenshots/question-single-select.png)
 
-### toast 超时 → 托盘红点（默认）/ 任务栏暖流（可选）
+### toast 被忽略 → DSH 自己托盘图标上的 QQ 式红点
 
-<img src="docs/assets/screenshots/taskbar-flash.png" alt="toast 超时后的提醒" style="max-width: 900px; width: 100%;" />
+![DSH 通知区域图标上闪烁的红色未读角标](docs/assets/screenshots/tray-badge.png)
 
-> 截图来自 Windows 11。默认提醒是 DSH 自己的托盘图标右下角亮起红色未读角标（QQ 样式）；上图的系统暖色任务栏闪烁现在需要按事件手动开启。
+### 所有设置都在插件自己的页面里（插件 → dsh-notify-win）
+
+![插件页上的逐事件通知设置](docs/assets/screenshots/settings-plugin-page.png)
+
+### 可选：用系统任务栏暖流代替红点
+
+<img src="docs/assets/screenshots/taskbar-flash.png" alt="toast 超时后的任务栏暖流" style="max-width: 900px; width: 100%;" />
+
+> 截图来自 Windows 11。toast 被忽略后的默认提醒是 DSH 自己托盘图标上的红色未读角标（QQ 样式）；任务栏暖流需要按事件手动开启。策略表、提醒时机和红点时长全部在插件页上编辑，不会往「设置」里加条目。
 
 ## ✨ 功能
 
