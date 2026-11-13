@@ -174,6 +174,8 @@ The same matrix is available as checkboxes in DSH: **Settings → Notifications*
 
 The tray badge note: DSH's tray icon belongs to the Electron main process; replacing its bitmap from another process is undocumented and can leave a broken icon behind, so nothing is replaced. The helper instead places a click-through layered window (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`) over the icon's cell and paints the dot there. The cell comes from the documented `Shell_NotifyIconGetRect` (Electron hosts its icon on `Electron_NotifyIconHostWindow`), and because the window belongs to the helper it disappears with it. When Windows 11 files the icon under the `^` overflow the rectangle is unavailable, so the dot falls back to a taskbar-button overlay (`ITaskbarList3::SetOverlayIcon`).
 
+The reminder is event-driven, with no polling thread: while idle the badge thread blocks in its message loop (measured 0.0 ms CPU over 10 s), and while blinking each frame is one `WM_TIMER` plus one `Shell_NotifyIconGetRect` (the window/id pair is cached, so the steady state is a single shell call). Taskbar moves and DPI/theme changes arrive as `WM_DISPLAYCHANGE` / `WM_SETTINGCHANGE` on the overlay window, and returning to DSH is caught by the existing foreground hook. The per-frame position read stays because Windows emits no event when an icon is filed into the `^` overflow or the tray re-lays out — the shell query is the only documented way to notice.
+
 To disable:
 
 ```yaml

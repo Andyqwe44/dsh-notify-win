@@ -18,11 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the notification area and nothing has to be pinned in the ^ overflow. The dot
   toggles until DSH comes to the foreground, the toast is answered/resolved, or
   `attention.blinkMaxMinutes` expires.
+- **Event-driven badge.** Nothing polls: the dot runs on one `WM_TIMER` per
+  blink frame, taskbar/DPI changes arrive as `WM_DISPLAYCHANGE` /
+  `WM_SETTINGCHANGE` on the overlay window, and the taskbar fallback blocks on
+  an `AutoResetEvent` while idle. The only repeated call is a single
+  `Shell_NotifyIconGetRect` per visible frame (window/id cached), because
+  Windows emits no event when a tray icon moves into the `^` overflow.
 - When Windows 11 files the icon under the `^` overflow the shell reports no
   rectangle; the helper then falls back to an `ITaskbarList3::SetOverlayIcon`
-  badge on the taskbar button. The cell is re-read every 300 ms while blinking,
-  so an icon moved into the overflow mid-reminder is retargeted to the taskbar
-  button within about a second instead of silently losing the dot.
+  badge on the taskbar button. Two missed frames retarget the reminder, so an
+  icon moved mid-blink is not silently lost.
 - **Removed** the helper-owned notification tray icon, its Windows 11 overflow
   promotion (`HKCU\Control Panel\NotifyIconSettings` → `IsPromoted`) and the
   `attention.trayIcon` setting. A profile that still carries `trayIcon:` is

@@ -106,6 +106,12 @@ static partial class Program
     static extern bool DestroyWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
     static extern UIntPtr SetTimer(IntPtr hWnd, uint id, uint elapse, IntPtr proc);
 
     [DllImport("user32.dll")]

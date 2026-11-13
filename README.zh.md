@@ -174,6 +174,8 @@ dsh plugin --profile web add dsh-notify-win
 
 关于托盘红点：DSH 的托盘图标属于 Electron 主进程，跨进程改它的位图是未文档化的，改坏了还会残留。所以 helper 不做替换，而是在图标所在的格子上盖一个**点击穿透的透明小窗**（`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`），把红点画上去：图标位置由官方接口 `Shell_NotifyIconGetRect` 查询（Electron 的图标宿主窗口是 `Electron_NotifyIconHostWindow`），窗口属于 helper 进程，helper 一退出红点就跟着消失。图标被 Windows 11 收进 `^` 溢出区、查不到位置时，自动回退到任务栏按钮角标（`ITaskbarList3::SetOverlayIcon`）。
 
+红点是事件驱动的，没有轮询线程：不闪烁时 badge 线程阻塞在消息循环里（实测 10 秒 CPU 0.0ms），闪烁时每个周期只有一次 `WM_TIMER` 和一次 `Shell_NotifyIconGetRect`（记账的窗口/id 会缓存，稳态下就是一次 shell 调用）；任务栏移动、DPI/主题变化由覆盖窗口的 `WM_DISPLAYCHANGE` / `WM_SETTINGCHANGE` 触发重新定位，用户切回 DSH 由已有的前台事件钩子立刻停掉。唯一保留的"查询"是每帧亮起时读一次图标位置——因为 Windows 在图标被收进 `^` 溢出区或重排时**不发任何事件**，这是唯一能知道位置变了的官方途径。
+
 禁用插件：
 
 ```yaml

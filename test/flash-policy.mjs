@@ -106,7 +106,13 @@ check(/SetProcessDpiAwarenessContext/.test(source) && /EnablePhysicalPixels\(\);
 check(/static void StopTrayBadge\(/.test(source), 'helper owns the tray dot stop')
 check(/_blinkMaxMinutes/.test(source) && /tray badge stopped: timed out/.test(source),
   'the tray dot has an expiry guard')
-check(/RectRefreshMs/.test(source), 'the tray rect is re-read instead of cached forever')
+check(/SetTimer\(window, BlinkTimerId/.test(source), 'the blink runs on its own timer, not a polling tick')
+check(/PostMessage\(window, WmAppArm/.test(source) && /PostMessage\(window, WmAppStop/.test(source),
+  'arm and stop are posted to the badge window')
+check(!/Thread\.Sleep\(BadgeTickMs\)|Thread\.Sleep\(OverlayTickMs\)/.test(source),
+  'no fixed-tick sleep loop remains in the badge code')
+check(/AutoResetEvent/.test(source) && /BadgeSignal\.WaitOne\(Timeout\.Infinite\)/.test(source),
+  'the taskbar badge blocks on a signal instead of polling while idle')
 check(/tray badge lost the icon; falling back to the taskbar badge/.test(source),
   'an icon moved into the overflow mid-blink retargets to the taskbar badge')
 

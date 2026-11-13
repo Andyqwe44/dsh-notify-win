@@ -16,10 +16,11 @@ namespace DshToastQuestion;
 /// </summary>
 static partial class Program
 {
-    const int BadgeTickMs = 100;
+    const int BadgeFrameMinMs = 30;
     const uint CoinitApartmentThreaded = 0x2;
 
     static readonly object BadgeLock = new();
+    static readonly AutoResetEvent BadgeSignal = new(false);
     static volatile bool _badgeRequested;
     static volatile bool _badgeExit;
     static string _badgeReason = "";
@@ -49,13 +50,15 @@ static partial class Program
         // The same foreground hook that stops the taskbar flash retires the
         // badge the moment a DSH window is activated.
         EnsureFlashWatcher();
+        BadgeSignal.Set();
         Log("taskbar badge armed: " + _badgeReason + " interval=" + _blinkIntervalMs + " max=" + _blinkMaxMinutes);
     }
 
-    /// <summary>Stop blinking; the badge thread clears the overlay on its next tick.</summary>
+    /// <summary>Stop blinking; the badge thread clears the overlay on its next wake.</summary>
     static void StopTaskbarBadge()
     {
         lock (BadgeLock) _badgeRequested = false;
+        BadgeSignal.Set();
     }
 
     static bool BadgeBlinking()
@@ -72,6 +75,7 @@ static partial class Program
     {
         StopTaskbarBadge();
         _badgeExit = true;
+        BadgeSignal.Set();
         var thread = _badgeThread;
         if (thread != null) thread.Join(600);
     }
@@ -198,7 +202,8 @@ static partial class Program
                         shown = false;
                         Log("taskbar badge cleared");
                     }
-                    Thread.Sleep(BadgeTickMs);
+                    // Idle: sleep until an arm/stop arrives, no polling.
+                    BadgeSignal.WaitOne(Timeout.Infinite);
                     continue;
                 }
 
@@ -209,7 +214,7 @@ static partial class Program
                         _badgeNoWindowLogged = true;
                         Log("taskbar badge waiting: no visible DSH window");
                     }
-                    Thread.Sleep(BadgeTickMs);
+                    BadgeSignal.WaitOne(1000);
                     continue;
                 }
                 _badgeNoWindowLogged = false;
@@ -222,8 +227,17 @@ static partial class Program
                     shown = _badgeFrameOn;
                     SetOverlay(list, target, shown ? icon : IntPtr.Zero,
                         shown ? Shorten(BrandName + " · " + _badgeReason, 64) : "");
+                    now = _badgeToggledAt;
                 }
-                Thread.Sleep(BadgeTickMs);
+                // Wake exactly at the next frame (or at the expiry), never on a
+                // fixed tick: the badge costs nothing while it is not blinking.
+                var untilNextFrame = Math.Max((long)BadgeFrameMinMs, _blinkIntervalMs - (now - _badgeToggledAt));
+                if (_blinkMaxMinutes > 0)
+                {
+                    var untilExpiry = _blinkMaxMinutes * 60_000L - (now - startedAt);
+                    untilNextFrame = Math.Min(untilNextFrame, Math.Max((long)BadgeFrameMinMs, untilExpiry));
+                }
+                BadgeSignal.WaitOne((int)Math.Min(untilNextFrame, int.MaxValue));
             }
         }
         catch (Exception error)

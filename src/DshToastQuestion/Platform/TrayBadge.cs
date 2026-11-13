@@ -12,27 +12,29 @@ namespace DshToastQuestion;
 /// through) and `WS_EX_NOACTIVATE` (it never steals focus), and because the
 /// window belongs to this process it disappears the moment the helper dies.
 ///
-/// When the icon sits in the Windows 11 overflow flyout the shell reports no
-/// rectangle; the caller then falls back to the taskbar-button badge.
+/// Everything is event-driven: the only timer is the blink interval itself
+/// (600 ms by default), and each "on" frame re-reads the icon cell with one
+/// shell call that uses a cached window/id. Idle cost is a blocked message
+/// loop; there is no polling thread.
 /// </summary>
 static partial class Program
 {
-    const int OverlayTickMs = 100;
-    const int RectRefreshMs = 300;
-    const int FallbackAfterMisses = 4;
+    const int BlinkTimerId = 1;
+    const int ExpiryTimerId = 2;
     const string OverlayClassName = "DshTrayBadgeOverlay";
+
+    // WM_APP + n: state changes posted from any thread to the badge window.
+    const uint WmAppArm = 0x8001;
+    const uint WmAppStop = 0x8002;
+    const uint WmDisplayChange = 0x007E;
+    const uint WmSettingChange = 0x001A;
 
     static readonly object OverlayLock = new();
     static volatile bool _overlayRequested;
     static volatile bool _overlayIgnoreFocus;
     static string _overlayReason = "";
     static long _overlayStartedAt;
-    static long _overlayToggledAt;
     static bool _overlayOn;
-    static long _rectCheckedAt;
-    static bool _rectValid;
-    static RECT _rectCell;
-    static int _overlayMisses;
     static Thread? _overlayThread;
     static IntPtr _overlayWindow;
     static WndProc? _overlayProc;
@@ -43,11 +45,14 @@ static partial class Program
     static int _dotSize;
     static int _dotX = int.MinValue;
     static int _dotY = int.MinValue;
+    static IntPtr _trayHost;
+    static uint _trayUid;
+    static int _trayMisses;
 
     /// <summary>Arm the tray badge; false when DSH's tray icon cannot be located.</summary>
     static bool StartTrayBadge(string reason, int intervalMs, int maxMinutes)
     {
-        if (!TryGetDshTrayIconRect(out _))
+        if (!TryQueryTrayRect(out _))
         {
             Log("tray badge unavailable: DSH tray icon is not in the visible notification area");
             return false;
@@ -57,26 +62,26 @@ static partial class Program
             _blinkIntervalMs = Math.Clamp(intervalMs, 200, 5000);
             _blinkMaxMinutes = Math.Max(0, maxMinutes);
             _overlayReason = string.IsNullOrEmpty(reason) ? "有新的通知" : reason;
-            if (!_overlayRequested)
-            {
-                _overlayRequested = true;
-                _overlayStartedAt = Environment.TickCount64;
-                _overlayToggledAt = _overlayStartedAt;
-                _overlayOn = false;
-            }
+            _overlayRequested = true;
+            _overlayStartedAt = Environment.TickCount64;
+            _trayMisses = 0;
         }
         EnsureOverlayThread();
         // The same foreground hook that stops the taskbar flash retires the dot
         // the moment a DSH window is activated.
         EnsureFlashWatcher();
+        var window = _overlayWindow;
+        if (window != IntPtr.Zero) PostMessage(window, WmAppArm, IntPtr.Zero, IntPtr.Zero);
         Log("tray badge armed: " + _overlayReason + " interval=" + _blinkIntervalMs + " max=" + _blinkMaxMinutes);
         return true;
     }
 
-    /// <summary>Stop blinking; the overlay thread hides the dot on its next tick.</summary>
+    /// <summary>Stop blinking; the badge window hides the dot on its next message.</summary>
     static void StopTrayBadge()
     {
         lock (OverlayLock) _overlayRequested = false;
+        var window = _overlayWindow;
+        if (window != IntPtr.Zero) PostMessage(window, WmAppStop, IntPtr.Zero, IntPtr.Zero);
     }
 
     static bool TrayBadgeBlinking()
@@ -109,7 +114,7 @@ static partial class Program
         thread.Start();
     }
 
-    /// <summary>Owns the layered window and its 100 ms tick for the helper lifetime.</summary>
+    /// <summary>Owns the layered window and its message loop for the helper lifetime.</summary>
     static void OverlayThreadMain()
     {
         try
@@ -137,15 +142,18 @@ static partial class Program
                 return;
             }
             _overlayWindow = window;
-            SetTimer(window, TimerId, OverlayTickMs, IntPtr.Zero);
             Log("tray badge thread ready");
+            // An arm that arrived while this thread was starting has no window
+            // to post to yet; pick it up now.
+            if (_overlayRequested) PostMessage(window, WmAppArm, IntPtr.Zero, IntPtr.Zero);
             MSG message;
             while (GetMessage(out message, IntPtr.Zero, 0, 0) > 0)
             {
                 TranslateMessage(ref message);
                 DispatchMessage(ref message);
             }
-            KillTimer(window, TimerId);
+            KillTimer(window, BlinkTimerId);
+            KillTimer(window, ExpiryTimerId);
             DestroyWindow(window);
             _overlayWindow = IntPtr.Zero;
         }
@@ -163,75 +171,106 @@ static partial class Program
 
     static IntPtr OverlayWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
-        if (msg == WmTimer)
+        try
         {
-            try { OverlayTick(); }
-            catch (Exception error) { Log("tray badge tick failed: " + error.Message); }
-            return IntPtr.Zero;
+            switch (msg)
+            {
+                case WmAppArm:
+                    ArmBlink(hWnd);
+                    return IntPtr.Zero;
+                case WmAppStop:
+                    HideDot(hWnd);
+                    Log("tray badge cleared");
+                    return IntPtr.Zero;
+                case (uint)WmTimer:
+                    if (wParam == new IntPtr(BlinkTimerId)) OnBlinkTick(hWnd);
+                    else if (wParam == new IntPtr(ExpiryTimerId))
+                    {
+                        Log("tray badge stopped: timed out");
+                        lock (OverlayLock) _overlayRequested = false;
+                        HideDot(hWnd);
+                    }
+                    return IntPtr.Zero;
+                case WmDisplayChange:
+                case WmSettingChange:
+                    // Taskbar moved/resized or the display changed: one cheap
+                    // re-read is enough to keep the dot on the icon.
+                    if (_overlayRequested) ShowDot(hWnd);
+                    return IntPtr.Zero;
+                case WmDestroy:
+                    KillTimer(hWnd, BlinkTimerId);
+                    KillTimer(hWnd, ExpiryTimerId);
+                    return IntPtr.Zero;
+            }
+        }
+        catch (Exception error)
+        {
+            Log("tray badge message failed: " + error.Message);
         }
         return DefWindowProc(hWnd, msg, wParam, lParam);
     }
 
-    static void OverlayTick()
+    /// <summary>Start the blink and expiry timers for the current arm.</summary>
+    static void ArmBlink(IntPtr window)
     {
-        var window = _overlayWindow;
-        if (window == IntPtr.Zero) return;
+        KillTimer(window, BlinkTimerId);
+        KillTimer(window, ExpiryTimerId);
+        SetTimer(window, BlinkTimerId, (uint)Math.Clamp(_blinkIntervalMs, 200, 5000), IntPtr.Zero);
+        var limit = _blinkMaxMinutes;
+        if (limit > 0)
+        {
+            var elapsed = Environment.TickCount64 - _overlayStartedAt;
+            var remaining = Math.Max(1000L, limit * 60_000L - elapsed);
+            SetTimer(window, ExpiryTimerId, (uint)Math.Min(remaining, int.MaxValue), IntPtr.Zero);
+        }
+        _overlayOn = false;
+        OnBlinkTick(window);
+    }
+
+    static void OnBlinkTick(IntPtr window)
+    {
         bool requested;
-        long startedAt;
-        lock (OverlayLock)
-        {
-            requested = _overlayRequested;
-            startedAt = _overlayStartedAt;
-        }
-        if (requested && !_overlayIgnoreFocus)
-        {
-            var expired = _blinkMaxMinutes > 0 &&
-                Environment.TickCount64 - startedAt >= _blinkMaxMinutes * 60_000L;
-            if (expired || TestDshWindowFocused())
-            {
-                lock (OverlayLock) _overlayRequested = false;
-                requested = false;
-                Log(expired ? "tray badge stopped: timed out" : "tray badge stopped: DSH is foreground");
-            }
-        }
+        lock (OverlayLock) requested = _overlayRequested;
         if (!requested)
         {
-            if (_overlayOn)
-            {
-                ShowWindow(window, SwHide);
-                _overlayOn = false;
-                Log("tray badge cleared");
-            }
+            HideDot(window);
             return;
         }
-        var now = Environment.TickCount64;
-        if (now - _rectCheckedAt >= RectRefreshMs)
+        if (!_overlayIgnoreFocus && TestDshWindowFocused())
         {
-            _rectCheckedAt = now;
-            _rectValid = TryGetDshTrayIconRect(out var fresh);
-            if (_rectValid) _rectCell = fresh;
+            Log("tray badge stopped: DSH is foreground");
+            lock (OverlayLock) _overlayRequested = false;
+            HideDot(window);
+            return;
         }
-        if (!_rectValid)
+        _overlayOn = !_overlayOn;
+        if (!_overlayOn)
         {
-            if (_overlayOn)
+            ShowWindow(window, SwHide);
+            return;
+        }
+        ShowDot(window);
+    }
+
+    /// <summary>Position the dot on the icon and show it; false when the cell is gone.</summary>
+    static bool ShowDot(IntPtr window)
+    {
+        if (!TryQueryTrayRect(out var cell))
+        {
+            HideDot(window);
+            // Two misses in a row means the icon was filed into the Windows 11
+            // overflow flyout (or Explorer restarted): retarget the reminder to
+            // the taskbar button instead of silently dropping it.
+            if (++_trayMisses >= 2)
             {
-                ShowWindow(window, SwHide);
-                _overlayOn = false;
-            }
-            // The icon was moved into the Windows 11 overflow flyout while the
-            // dot was up; the cell is gone for good, so retarget the reminder
-            // to the taskbar button instead of silently dropping it.
-            if (++_overlayMisses >= FallbackAfterMisses)
-            {
-                _overlayMisses = 0;
-                lock (OverlayLock) _overlayRequested = false;
+                _trayMisses = 0;
                 Log("tray badge lost the icon; falling back to the taskbar badge");
+                lock (OverlayLock) _overlayRequested = false;
                 StartTaskbarBadge(_overlayReason, _blinkIntervalMs, _blinkMaxMinutes);
             }
-            return;
+            return false;
         }
-        _overlayMisses = 0;
-        var cell = _rectCell;
+        _trayMisses = 0;
 
         // The tray cell spans the taskbar height; Windows 11 draws the icon at
         // half the cell width, centred.
@@ -248,7 +287,7 @@ static partial class Program
             if (!SetDotContent(dot))
             {
                 Log("tray badge content failed");
-                return;
+                return false;
             }
         }
         if (x != _dotX || y != _dotY)
@@ -257,21 +296,15 @@ static partial class Program
             _dotY = y;
             ApplyDotPosition(x, y, dot);
         }
+        SetWindowPos(window, HwndTopmost, x, y, dot, dot, SwpNoactivate);
+        ShowWindow(window, SwShowNoActivate);
+        return true;
+    }
 
-        if (now - _overlayToggledAt >= _blinkIntervalMs)
-        {
-            _overlayToggledAt = now;
-            _overlayOn = !_overlayOn;
-            if (_overlayOn)
-            {
-                SetWindowPos(window, HwndTopmost, x, y, dot, dot, SwpNoactivate);
-                ShowWindow(window, SwShowNoActivate);
-            }
-            else
-            {
-                ShowWindow(window, SwHide);
-            }
-        }
+    static void HideDot(IntPtr window)
+    {
+        _overlayOn = false;
+        if (window != IntPtr.Zero) ShowWindow(window, SwHide);
     }
 
     static void ApplyDotPosition(int x, int y, int size)
@@ -371,49 +404,78 @@ static partial class Program
 
     /// <summary>
     /// Screen rectangle of DSH's own tray icon. Electron hosts its icons on an
-    /// `Electron_NotifyIconHostWindow`; the icon id is not public, so the ids
-    /// the shell accepts for that window are probed (one hit wins).
+    /// `Electron_NotifyIconHostWindow`; the window/id pair is resolved once and
+    /// then reused, so the steady-state cost is one `Shell_NotifyIconGetRect`
+    /// call per blink.
     /// </summary>
-    static bool TryGetDshTrayIconRect(out RECT cell)
+    static bool TryQueryTrayRect(out RECT rect)
     {
-        cell = default;
+        rect = default;
         try
         {
-            var main = FindDshWindow(includeHidden: true);
-            if (main == IntPtr.Zero) return false;
-            GetWindowThreadProcessId(main, out var processId);
-            var result = new RECT();
-            var found = false;
-            EnumWindows((h, _) =>
+            for (var attempt = 0; attempt < 2; attempt++)
             {
-                GetWindowThreadProcessId(h, out var owner);
-                if (owner != processId) return true;
-                var name = new StringBuilder(256);
-                GetClassName(h, name, name.Capacity);
-                if (!name.ToString().StartsWith("Electron_NotifyIconHostWindow", StringComparison.Ordinal)) return true;
-                for (uint id = 1; id <= 16; id++)
+                if (_trayHost == IntPtr.Zero || !IsWindow(_trayHost))
                 {
-                    var identifier = new NOTIFYICONIDENTIFIER
-                    {
-                        cbSize = Marshal.SizeOf<NOTIFYICONIDENTIFIER>(),
-                        hWnd = h,
-                        uID = id,
-                    };
-                    if (Shell_NotifyIconGetRect(ref identifier, out var rect) != 0) continue;
-                    if (rect.Right - rect.Left <= 0) continue;
-                    result = rect;
-                    found = true;
-                    return false;
+                    if (!ResolveTrayHost()) return false;
                 }
-                return true;
-            }, IntPtr.Zero);
-            if (!found) return false;
-            cell = result;
-            return true;
+                var identifier = new NOTIFYICONIDENTIFIER
+                {
+                    cbSize = Marshal.SizeOf<NOTIFYICONIDENTIFIER>(),
+                    hWnd = _trayHost,
+                    uID = _trayUid,
+                };
+                if (Shell_NotifyIconGetRect(ref identifier, out var cell) == 0 && cell.Right > cell.Left)
+                {
+                    rect = cell;
+                    return true;
+                }
+                // The window/id went stale (Electron rebuilt its tray): resolve
+                // once more before giving up for this frame.
+                _trayHost = IntPtr.Zero;
+            }
+            return false;
         }
         catch
         {
             return false;
         }
+    }
+
+    /// <summary>Find Electron's tray host window and the id the shell accepts.</summary>
+    static bool ResolveTrayHost()
+    {
+        var main = FindDshWindow(includeHidden: true);
+        if (main == IntPtr.Zero) return false;
+        GetWindowThreadProcessId(main, out var processId);
+        var host = IntPtr.Zero;
+        uint id = 0;
+        EnumWindows((h, _) =>
+        {
+            GetWindowThreadProcessId(h, out var owner);
+            if (owner != processId) return true;
+            var name = new StringBuilder(256);
+            GetClassName(h, name, name.Capacity);
+            if (!name.ToString().StartsWith("Electron_NotifyIconHostWindow", StringComparison.Ordinal)) return true;
+            for (uint candidate = 1; candidate <= 16; candidate++)
+            {
+                var identifier = new NOTIFYICONIDENTIFIER
+                {
+                    cbSize = Marshal.SizeOf<NOTIFYICONIDENTIFIER>(),
+                    hWnd = h,
+                    uID = candidate,
+                };
+                if (Shell_NotifyIconGetRect(ref identifier, out var cell) != 0) continue;
+                if (cell.Right - cell.Left <= 0) continue;
+                host = h;
+                id = candidate;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        if (host == IntPtr.Zero) return false;
+        _trayHost = host;
+        _trayUid = id;
+        return true;
     }
 }
