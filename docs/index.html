@@ -52,6 +52,17 @@
       height: 22px;
       margin-right: 6px;
     }
+    .hint {
+      color: #57606a;
+      font-size: 0.9rem;
+      margin: 4px 0 20px;
+    }
+    .shot {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+    }
     pre {
       background: #f6f8fa;
       border: 1px solid #d0d7de;
@@ -110,6 +121,12 @@
       <li><strong>零脚本</strong> — 所有 toast、身份注册与点击聚焦由常驻 .NET helper 完成，需要 .NET 10 Desktop Runtime</li>
       <li><strong>零侵入</strong> — 不注册服务、不经过模型审批</li>
     </ul>
+
+    <h2>📸 截图</h2>
+    <p><img class="shot" src="assets/screenshots/tray-badge.png" alt="DSH 托盘图标上的红色未读角标" width="390" /></p>
+    <p class="hint">toast 被忽略后：红点在 DSH 自己的通知区域图标上闪，不新增托盘图标。</p>
+    <p><img class="shot" src="assets/screenshots/settings-plugin-page.png" alt="插件页上的逐事件通知设置" width="720" /></p>
+    <p class="hint">策略、提醒时机和红点时长都在「插件 → dsh-notify-win」页里，改完即时生效。</p>
 
     <h2>🚀 一行安装</h2>
     <pre><code>dsh plugin --profile web add github:Andyqwe44/dsh-notify-win</code></pre>
