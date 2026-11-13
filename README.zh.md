@@ -6,7 +6,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.8.0-blue)
+![version](https://img.shields.io/badge/version-0.8.1-blue)
 
 ## 📸 截图
 
@@ -222,7 +222,7 @@ dsh plugin --profile web add dsh-notify-win
 | 「完成/告警/取消」触发 | `session/event` → `turn/end` 原因缓存 + `agent/status` 的 `idle`（仅根 agent） |
 | 「压缩完成 / 压缩失败」触发 | `session/event` → `compaction/end` |
 | 「待回答」触发 | `approval/request` 瀑布（toast + DSH 面板）+ `ask_user_question` 的 `tools/execute` |
-| 完成/压缩/告警/取消 toast | 常驻 .NET helper 的 `notify` op；WinRT `Windows.UI.Notifications`，失败回退 `NotifyIcon` 气泡。不再为每条通知启动进程 |
+| 完成/压缩/告警/取消 toast | 常驻 .NET helper 的 `notify` op；WinRT `Windows.UI.Notifications`，失败时不弹托盘气泡，直接交给红点/暖流；helper 不占托盘图标。不再为每条通知启动进程 |
 | 交互审批 toast | DSH 自己的审批面板照常显示；toast 只是它的遥控器，复用同一套 `question` op：单张固定选项卡片（`允许一次` / `拒绝`），没有自定义输入。答案暂存给浏览器端，由浏览器端切换到所属会话并点击面板，面板仍是最终权威。点「取消」把决定留给面板；回合取消/中止时撤掉 toast |
 | 交互问题 toast | 常驻 .NET helper 的 `question` op，通过子进程 stdin/stdout 的 JSON 行通信。单题一张卡；多题一张分页卡（`问题 i/n`、上一题/下一题/提交），每页草稿通过 toast 的 `defaultInput` 属性恢复 |
 | 回答回执 | helper 上报选择并收起问题 toast → 宿主暂存给浏览器端并核对 `ask_user_question` 的 tool result → 只弹一条带模型第一行的 `spoken`（铺满一行、超出以 … 截断，无标题行）；没有 pending / delivered toast |
@@ -298,7 +298,7 @@ dsh-notify-win/
 │   │   ├── WireModels.cs        # JSON 消息与问题模型
 │   │   └── HelperOutput.cs      # stdout 协议 + XML 转义
 │   ├── Notifications/
-│   │   └── Notifications.cs     # notify op、toast、气泡、跟踪清理
+│   │   └── Notifications.cs     # notify op、toast、跟踪清理
 │   ├── Questions/
 │   │   ├── QuestionFlow.cs      # flow 状态、开始/结束
 │   │   ├── QuestionRendering.cs # toast XML、分页、草稿

@@ -30,7 +30,6 @@ static partial class Program
     static volatile bool _stopping;
     static int _tagSeq;
     static int _notifyTagSeq;
-    static NotifyIcon? _balloon;
 
     // Taskbar flash policy (the only implementation left). FLASHW_TRAY |
     // FLASHW_TIMERNOFG arms a shell flash that ends when the DSH window comes

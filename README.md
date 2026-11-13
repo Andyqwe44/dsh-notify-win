@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.8.0-blue)
+![version](https://img.shields.io/badge/version-0.8.1-blue)
 
 ## 📸 Screenshots
 
@@ -241,7 +241,7 @@ reason, so the plugin reports the retry count from the last retry record
 | Trigger "compact" / compaction failure | `session/event` → `compaction/end` |
 | Trigger "question" | `approval/request` waterfall (toast + DSH panel) + `tools/execute` for `ask_user_question` |
 | Trigger "file changed" | `tools/execute` for `write` / `edit` / `apply_patch` / `str_replace_editor` returning a successful result (root agents only) |
-| Done/compact/alert/notice toast | Resident .NET helper `notify` op; WinRT `Windows.UI.Notifications`, `NotifyIcon` balloon fallback. No per-notification process |
+| Done/compact/alert/notice toast | Resident .NET helper `notify` op; WinRT `Windows.UI.Notifications`; a refused toast falls back to the attention effects (no tray icon). No per-notification process |
 | Effect policy | `lib/config.js` resolves one `{toast, blink, flash, timing}` row per event; the host sends it with `notify`/`question` and the helper applies it on show (`immediate`) or on the toast's timed-out dismissal (`after-timeout`) |
 | Tray badge | The helper places a click-through layered window over DSH's tray icon (located with `Shell_NotifyIconGetRect`) and blinks a red dot on it; it clears on a DSH foreground window, an answer/resolve, or the configured limit, and never registers a tray icon or touches the icon bitmap |
 | Badge fallback | When the tray icon cannot be located (filed under `^`), the dot is drawn as an `ITaskbarList3` overlay on the taskbar button |
@@ -328,7 +328,7 @@ dsh-notify-win/
 │   │   ├── WireModels.cs        # JSON messages and question models
 │   │   └── HelperOutput.cs      # stdout protocol + XML escaping
 │   ├── Notifications/
-│   │   └── Notifications.cs     # notify op, toast delivery, balloon, tracking
+│   │   └── Notifications.cs     # notify op, toast delivery, tracking
 │   ├── Questions/
 │   │   ├── QuestionFlow.cs      # flow state, start/finish
 │   │   ├── QuestionRendering.cs # toast XML, paging, drafts

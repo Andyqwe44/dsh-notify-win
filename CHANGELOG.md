@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-13
+
+### Removed
+
+- **The NotifyIcon balloon fallback.** When Windows refused every toast
+  identity, the helper created a visible `NotifyIcon` for eight seconds to show
+  a balloon tip — the one path left that added an icon to the notification area.
+  A refused toast now logs and leaves the reminder to the configured attention
+  effects (tray badge / taskbar flash), so the helper owns no tray icon at all.
+  The stale `HKCU\Control Panel\NotifyIconSettings` row left behind by the
+  pre-0.7 tray icon was a leftover, not a running icon; it can be deleted, which
+  removes the app from Settings → Taskbar → *Other system tray icons*.
+
 ## [0.8.0] - 2026-11-13
 
 ### Changed

@@ -62,8 +62,11 @@ static partial class Program
             };
             if (!ShowToast(toast))
             {
-                Log("notify toast failed; falling back to balloon");
-                ShowBalloon(title, body);
+                // This helper owns no tray icon: a NotifyIcon balloon would add
+                // one back to the notification area just to say something the
+                // configured attention effects already say. A toast Windows
+                // refuses therefore degrades to those effects alone.
+                Log("notify toast failed; attention effects only, no tray icon");
                 StartAttention(message.Effects, message.Kind ?? "");
             }
             else if (message.Effects?.Timing == "immediate")
@@ -76,7 +79,6 @@ static partial class Program
         catch (Exception error)
         {
             Log("notify failed: " + error.Message);
-            ShowBalloon(title, body);
         }
     }
 
@@ -100,39 +102,6 @@ static partial class Program
             }
         }
         return false;
-    }
-
-    /// <summary>Last-resort balloon when even the toast could not be shown.</summary>
-    static void ShowBalloon(string title, string body)
-    {
-        try
-        {
-            var icon = new NotifyIcon
-            {
-                Icon = SystemIcons.Information,
-                Visible = true,
-                BalloonTipTitle = title,
-                BalloonTipText = body,
-                BalloonTipIcon = ToolTipIcon.Info,
-            };
-            icon.ShowBalloonTip(8000);
-            var previous = _balloon;
-            _balloon = icon;
-            previous?.Dispose();
-            _ = Task.Delay(9000).ContinueWith(_ =>
-            {
-                try
-                {
-                    if (ReferenceEquals(_balloon, icon)) _balloon = null;
-                    icon.Dispose();
-                }
-                catch { }
-            });
-        }
-        catch (Exception error)
-        {
-            Log("balloon failed: " + error.Message);
-        }
     }
 
     static void RemoveToast(string tag, string group)
