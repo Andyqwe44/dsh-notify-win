@@ -6,6 +6,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-event notification policy.** Every event (task done, context
+  compaction, reply receipt, question, approval, error, cancellation, file
+  change) now resolves its own row: native toast, QQ-style tray blink and the
+  taskbar flash can be enabled independently, and the attention effects start
+  either when the event fires or after its toast times out unanswered. The
+  runtime exports a `Config` schema, so DSH renders the matrix in **Settings →
+  Notifications**; the fields are `.volatile()`, which applies a checkbox to the
+  running plugin without a restart.
+- **QQ-style tray blink.** The helper runs its own notification tray icon on a
+  dedicated STA thread and blinks a red unread dot between two frames. It stops
+  when a DSH window is foreground, when the icon is clicked, when the
+  question/approval is answered or resolved, when the helper shuts down, or
+  after `attention.blinkMaxMinutes`. Windows 11 files new tray icons under the
+  overflow chevron, so the helper pins its own icon into the visible tray once
+  (`HKCU\Control Panel\NotifyIconSettings` → `IsPromoted`) before re-registering
+  it; set `attention.trayIcon: on-blink` to skip the permanent icon.
+- **File-change trigger** for successful `write` / `edit` / `apply_patch` /
+  `str_replace_editor` calls, off by default, with configurable title/body.
+- `test/policy.mjs` guards the schema/default alignment, the effect matrix and
+  the settings-page event keys.
+
+### Changed
+
+- The taskbar warm pulse is now opt-in: the default reminder after an ignored
+  toast is the tray blink (`eventPolicy.*.flash` defaults to `false`).
+- The helper protocol grew `effects` on `notify` / `question` / `status`, an
+  effect-only `attention` op and a `config` op carrying the tray-icon mode and
+  blink timing.
+
 ### Changed
 
 - **One .NET notification implementation.** Every toast — done / compact /

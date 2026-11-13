@@ -1,15 +1,14 @@
-// Flash-policy guard for the sole (C#) implementation.
+// Attention guard for the .NET helper.
 //
-// The taskbar flash must stay OS-owned: FLASHW_TRAY | FLASHW_TIMERNOFG
-// (2 | 12), uCount 0. Windows stops it when the DSH window comes to the
-// foreground; the helper also remembers the armed window and stops it itself
-// as soon as DSH is in front, so Explorer's flash-tick delay is not visible.
-// An explicit FLASHW_STOP ends it when a question is resolved elsewhere. A
-// periodic re-pulse (the old 3-second loop) must not come back.
+// The taskbar flash is no longer the default: each event's policy decides
+// whether the helper shows a toast, blinks the notification tray icon, pulses
+// the taskbar button, or does several of them. The flash must stay OS-owned
+// (FLASHW_TRAY | FLASHW_TIMERNOFG) and stop when DSH comes to the foreground;
+// there is still no periodic re-pulse timer. The QQ-style tray blink lives in
+// TrayBlink.cs, and every path routes through StartAttention/StopAttention.
 //
-// The notification path is now .NET-only. This test also pins that the
-// PowerShell/VBS scripts are really gone, so a future change cannot quietly
-// reintroduce a second implementation.
+// This test also pins that the PowerShell/VBS scripts are really gone, so a
+// future change cannot quietly reintroduce a second implementation.
 import { access, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -56,6 +55,7 @@ check(await gone('../lib/focus-dsh.vbs'), 'focus-dsh.vbs is gone')
 check(await gone('../test/toast-probe.ps1'), 'toast-probe.ps1 is gone')
 check(await gone('../test/flash-probe.ps1'), 'flash-probe.ps1 is gone')
 
+// --- Taskbar flash stays OS-owned and stoppable. ---
 check(/FlashTray\s*=\s*0x2\b/.test(source), 'helper defines FLASHW_TRAY (2)')
 check(/FlashTimerNoForeground\s*=\s*0xC\b/.test(source), 'helper defines FLASHW_TIMERNOFG (12)')
 check(
@@ -65,10 +65,6 @@ check(
 check(!/Task\.Delay\(3000\)/.test(source), 'helper has no 3-second re-pulse timer')
 check(!/_flashEnabled|_flashGeneration/.test(source), 'helper has no periodic flash state machine')
 check(/static void StopTaskbarFlash/.test(source), 'helper exposes an explicit FLASHW_STOP')
-check(
-  (source.match(/StopTaskbarFlash\(\);/g) ?? []).length >= 3,
-  'helper stops the flash on the answer/resolve paths',
-)
 check(/GetForegroundWindow/.test(source), 'helper does not arm a flash while DSH is foreground')
 check(/_flashHwnd/.test(source), 'helper remembers the armed window for an explicit stop')
 check(
@@ -77,11 +73,38 @@ check(
   'helper stops the flash as soon as a DSH window is foreground',
 )
 
-check(/case "notify":/.test(source), 'helper handles the non-interactive notify op')
+// --- One attention entry point, driven by the host policy. ---
+check(/static void StartAttention\(EffectPolicy\? effects, string reason\)/.test(source),
+  'helper has one StartAttention entry point')
+check(/if \(effects\.Blink\) StartTrayBlink/.test(source), 'StartAttention arms the tray blink when enabled')
+check(/if \(effects\.Flash\) FlashTaskbar/.test(source), 'StartAttention arms the taskbar flash when enabled')
 check(
-  (source.match(/toast\.Activated \+=/g) ?? []).length >= 3,
-  'notify, question and status toasts all handle activation',
+  /static void StopAttention\(\)[\s\S]{0,160}StopTaskbarFlash\(\)[\s\S]{0,160}StopTrayBlink\(\)/.test(source),
+  'StopAttention stops both effects',
 )
+check(/case "attention":/.test(source), 'helper accepts an effect-only attention op')
+check(/case "config":/.test(source), 'helper accepts the tray/blink config op')
+
+// --- Toast dismissal honours the per-event policy, not a hard-coded flash. ---
+check(/StartAttention\(message\.Effects/.test(source), 'notify toasts start their configured effects')
+check(/StartAttention\(flow\.Effects/.test(source), 'question toasts start their configured effects')
+check(/effects\?\.Timing == "immediate"/.test(source) && /Timing == "immediate"/.test(source),
+  'helper honours the immediate timing')
+check(/!effects\.Toast/.test(source), 'the receipt toast can be turned off')
+
+// --- QQ-style tray blink. ---
+check(/static void StartTrayBlink\(/.test(source), 'helper owns the tray blink start')
+check(/static void StopTrayBlink\(/.test(source), 'helper owns the tray blink stop')
+check(/NotifyIcon/.test(source), 'the blink uses a NotifyIcon')
+check(/Application\.Run\(context\)/.test(source), 'the tray icon runs on its own message loop')
+check(/SetApartmentState\(ApartmentState\.STA\)/.test(source), 'the tray thread is STA')
+check(/TestDshWindowFocused\(\)/.test(source), 'the tray blink stops when DSH is foreground')
+check(/DestroyIcon\(handle\)/.test(source), 'drawn tray icons release their HICON')
+check(/static void TickBlink\(\)/.test(source) && /_blinkMaxMinutes/.test(source),
+  'the tray blink has an expiry guard')
+check(/Tray icon build failed|BuildBlinkIcon/.test(source), 'the tray frames are built at runtime')
+
+// --- Existing helper seams stay intact. ---
 check(/static bool ShowToast/.test(source), 'helper owns toast delivery')
 check(/static void EnsureToastIdentity/.test(source), 'helper owns the toast identity')
 check(/static void FocusDsh/.test(source), 'helper owns click-to-focus')
@@ -90,5 +113,5 @@ check(
   'click-to-focus shows a hidden window and forces the foreground',
 )
 
-console.log(failed ? 'FLASH POLICY TEST FAILED' : 'FLASH POLICY TEST PASSED')
+console.log(failed ? 'ATTENTION POLICY TEST FAILED' : 'ATTENTION POLICY TEST PASSED')
 if (failed) process.exit(1)

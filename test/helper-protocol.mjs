@@ -75,6 +75,18 @@ function assert(ok, label) {
   const pong = await helper.next((m) => m.ev === 'pong')
   assert(pong.ev === 'pong', 'ping answers pong')
 
+  // Tray settings and an effect-only attention message must parse and leave
+  // the helper alive. Every effect is off, so nothing is shown.
+  helper.send({ op: 'config', trayIcon: 'on-blink', blinkIntervalMs: 600, blinkMaxMinutes: 30 })
+  helper.send({
+    op: 'attention',
+    kind: 'done',
+    effects: { blink: false, flash: false, timing: 'immediate' },
+  })
+  helper.send({ op: 'ping' })
+  const pong2 = await helper.next((m) => m.ev === 'pong' && m !== pong)
+  assert(pong2.ev === 'pong', 'config + attention are accepted without a crash')
+
   helper.send({ op: 'shutdown' })
   const code = await waitExit(helper.child)
   assert(code === 0, 'shutdown exits 0')

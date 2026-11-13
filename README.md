@@ -1,6 +1,6 @@
 # dsh-notify-win
 
-> DeepSeek Harness (DSH) Windows notification plugin — native toast + taskbar flash when a task finishes or your input is needed.
+> DeepSeek Harness (DSH) Windows notification plugin — native toast, QQ-style tray blink and an optional taskbar flash when a task finishes or your input is needed. Every event chooses its own reminders in Settings → Notifications.
 
 English | [中文](README.zh.md)
 
@@ -22,16 +22,17 @@ English | [中文](README.zh.md)
 
 ![Single-select question toast](docs/assets/screenshots/question-single-select.png)
 
-### Toast timeout → taskbar flash
+### Toast timeout → tray blink (default) or taskbar flash (optional)
 
-<img src="docs/assets/screenshots/taskbar-flash.png" alt="Taskbar flash after toast timeout" style="max-width: 900px; width: 100%;" />
+<img src="docs/assets/screenshots/taskbar-flash.png" alt="Tray blink / taskbar flash after toast timeout" style="max-width: 900px; width: 100%;" />
 
-> Screenshots are from Windows 11. The taskbar flash is animated; the screenshot shows the DSH taskbar button highlighted by the system warm pulse.
+> Screenshots are from Windows 11. The default reminder after an ignored toast is the QQ-style notification tray icon (a red unread dot blinking); the warm taskbar pulse shown above is now opt-in per event.
 
 ## ✨ Features
 
 - 🔔 **Native Windows toast** (bottom-right, Win10/11 system style)
-- 💡 **Taskbar flash** (`FlashWindowEx`) when DSH is in the background; the OS stops it as soon as DSH comes to the foreground
+- 🔴 **QQ-style tray blink** — the helper registers a small notification tray icon and blinks a red unread dot when a toast is ignored; it stops on a DSH foreground window, on a click, or when the question is answered
+- 💡 **Optional taskbar flash** (`FlashWindowEx`) — off by default, can be enabled per event; the OS stops it as soon as DSH comes to the foreground
 - 🖱️ **Click-to-focus** — clicking a toast opens DSH and switches to the corresponding session
 - ✅ Triggers when a **task finishes** (root agent goes `idle`)
 - 🧭 **Tells you WHY it stopped** — the toast reflects the `turn/end` reason instead of always claiming success: normal finish, output-token ceiling (`max-tokens`), blocked pre-step, LLM failure (provider-neutral code + retry count), or cancellation. See [Stop conditions](#stop-conditions).
@@ -41,10 +42,10 @@ English | [中文](README.zh.md)
 - 🧷 **Resident helper, plugin lifetime**: one `dsh-toast-question.exe` is started when the plugin is applied and reused for every question. Disabling the plugin or quitting DSH shuts it down (stdio EOF when DSH exits), so no per-question process spawn and no orphan process.
 - ✅ **One honest receipt**: submitting closes the question toast; nothing else pops up until the model answers, and then exactly one toast appears — the **model's first line**, filled to the toast width and cut with `…` when it is longer (no “已提交” / “已送达” / “已收到并回应” stages, no title line). Text that can only exist if the whole round trip really happened. If the model produces no visible text, nothing is shown (no invented receipt). Cancelling says “没有向 DSH 提交任何答案”; a card that could not be filled says “请在 DSH 窗口中手动回答”.
 - 🖱️ **Answering from the toast reaches the agent**: the chosen options (and custom text, across multiple questions) are applied to the official question card and submitted, so the blocked `ask_user_question` call returns immediately
-- ⏰ **Timeout flash**: if any toast is ignored and dismissed by the system timeout, the taskbar flashes; it stops as soon as DSH is foreground or the question is answered in the window
+- ⏰ **Per-event reminders**: every event (task done, compaction, reply receipt, question, approval, error, cancel, file change) independently chooses toast / tray blink / taskbar flash, and whether the attention effects start right away or only after the toast times out. Configure it in **Settings → Notifications**; changes apply without a restart.
 - 🖼️ Badge-only toasts: no hero banner in any kind — just the app icon in the header, so notifications stay compact
 - 🪪 Toasts are attributed to **DeepSeek Harness** with its own icon (registered AppUserModelID); the generic PowerShell toast identity is used only as a last resort if the branded notifier cannot be created
-- 🚀 No DSH service, model approval, or settings namespace — just one resident helper child process
+- 🚀 One resident helper child process; the host half registers no DSH service and no tool (its Config schema only drives the settings page)
 
 ## 🚀 One-line install
 
@@ -130,6 +131,24 @@ Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
     answerSpeechTimeoutMs: 90000   # how long to wait for the model's first line after delivery
     showProject: true          # prefix body with project label
 
+    # Notification behavior. Settings → Notifications edits these live.
+    eventPolicy:
+      done:      { toast: true, blink: true,  flash: false }
+      compact:   { toast: true, blink: false, flash: false }
+      receipt:   { toast: true, blink: false, flash: false }
+      question:  { toast: true, blink: true,  flash: false }   # toast is always on
+      approval:  { toast: true, blink: true,  flash: false }   # toast is always on
+      error:     { toast: true, blink: true,  flash: false }
+      cancelled: { toast: true, blink: false, flash: false }
+      file:      { toast: false, blink: false, flash: false }
+    attention:
+      timing: 'after-timeout'   # 'after-timeout' (when an ignored toast expires) or 'immediate'
+      blinkMaxMinutes: 30       # 0 = blink until you come back
+      blinkIntervalMs: 600
+      trayIcon: 'always'        # 'always' (visible while DSH runs) or 'on-blink'
+    fileChangeTitle: 'DeepSeek Harness · File changed'
+    fileChangeBody: 'Updated {path}'
+
     # Stop-reason notifications (defaults are Chinese; shown here in English)
     notifyOnCancel: true       # notice when the user cancels a running turn
     notifyOnError: true        # alert on max-tokens / blocked / LLM failure / failed compaction
@@ -149,6 +168,12 @@ Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
 ```
 
 Templates support `{message}`, `{code}`, `{hint}`, `{reason}`, `{retry}`, `{retryMax}`.
+
+### Notification behavior (Settings → Notifications)
+
+The same matrix is available as checkboxes in DSH: **Settings → Notifications** (the page is registered by this plugin's client half). Each row is one event; the three columns are the toast, the QQ-style tray blink and the taskbar flash. `eventPolicy` and `attention` are declared `.volatile()`, so a checkbox writes through DSH's settings transport and the running plugin picks the new value up on the next event — no restart.
+
+The tray icon note: the DSH tray icon belongs to the Electron main process, so a plugin cannot animate it. The helper therefore registers its own notification icon. Windows 11 files brand-new tray icons into the `^` overflow area, so the helper pins this icon into the visible tray on first show (`IsPromoted` under `HKCU\Control Panel\NotifyIconSettings`); without that the blink would happen out of sight. Choose `trayIcon: on-blink` if you do not want a permanent icon.
 
 To disable:
 
@@ -197,7 +222,10 @@ reason, so the plugin reports the retry count from the last retry record
 | Trigger "done"/alert/notice | `session/event` → `turn/end` reason cache + `agent/status` `idle` (root agents only) |
 | Trigger "compact" / compaction failure | `session/event` → `compaction/end` |
 | Trigger "question" | `approval/request` waterfall (toast + DSH panel) + `tools/execute` for `ask_user_question` |
+| Trigger "file changed" | `tools/execute` for `write` / `edit` / `apply_patch` / `str_replace_editor` returning a successful result (root agents only) |
 | Done/compact/alert/notice toast | Resident .NET helper `notify` op; WinRT `Windows.UI.Notifications`, `NotifyIcon` balloon fallback. No per-notification process |
+| Effect policy | `lib/config.js` resolves one `{toast, blink, flash, timing}` row per event; the host sends it with `notify`/`question` and the helper applies it on show (`immediate`) or on the toast's timed-out dismissal (`after-timeout`) |
+| Tray blink | The helper owns a `NotifyIcon` on its own STA thread with a WinForms message loop; frames blink a red unread dot, stop on a DSH foreground window, a click, an answer/resolve, or the configured limit |
 | Interactive approval toast | DSH's own approval panel still shows; the toast is a remote control using the same `question` op: one fixed-choice card (`允许一次` / `拒绝`, no free-text input). Its answer is parked for the browser half, which switches to the owning session and clicks the panel; the panel remains the authority. Cancelling the toast leaves the decision to the panel, and an aborted turn retires the toast |
 | Interactive question toast | Resident .NET helper `question` op, spoken to over the child's stdin/stdout (newline-delimited JSON). One question = one card; several questions = one paged card (`问题 i/n`, 上一题/下一题/提交), with each page's draft restored through the toast `defaultInput` attribute |
 | Question answer receipt | The helper reports the selection and dismisses the question toast; the host parks it for the browser half, checks the `ask_user_question` tool result, then shows exactly one toast — `spoken` with the model's first line (filled to the toast width, cut with `…`). No pending, delivered or title toast |
@@ -206,7 +234,7 @@ reason, so the plugin reports the retry count from the last retry record
 | Taskbar flash | `EnumWindows` + `FlashWindowEx` (`FLASHW_TRAY \| FLASHW_TIMERNOFG` = `2 \| 12` = 14); the OS stops it when DSH is foreground, with no periodic re-pulse |
 | Execution | Every notification, question and toast click goes through the resident .NET helper; there is no PowerShell path |
 
-The plugin registers no service, tool, or settings namespace — a plain consumer row, safe in any profile.
+The host half registers no DSH service and no tool; it exports a `Config` schema (the settings page form) and consumes lifecycle events. The settings page itself is registered by the client half into `settings.section`.
 
 ### Helper lifecycle
 
@@ -224,11 +252,12 @@ The plugin registers no service, tool, or settings namespace — a plain consume
 ## Known limitations
 
 - Native toast text is compact: only about 4 lines are displayed, so long content is truncated.
-- The native selection dropdown may collapse when the pointer moves onto the popup; if the toast is then dismissed by timeout, the taskbar flash still reminds you, and it stops once DSH is foreground.
+- The native selection dropdown may collapse when the pointer moves onto the popup; if the toast is then dismissed by timeout, the configured reminder (tray blink by default) still tells you, and it stops once DSH is foreground.
 - The .NET 10 Desktop Runtime is a hard requirement. Without it the helper cannot start and no notification can be shown; the host logs an explicit error. There is no PowerShell fallback.
 - The helper is a single long-lived process. If it crashes, the next notification asks the host to spawn it again; until then, notifications are dropped with a log line.
 - `FlashWindowEx` uses the system's warm-pulse highlight; custom colors are not possible.
-- Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background; an active flash is stopped by the OS when the window comes to the foreground.
+- Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background; an active flash is stopped by the OS when the window comes to the foreground. The tray blink is independent: it also stops when a DSH window is activated.
+- Windows 11 hides brand-new tray icons in the `^` overflow area. The helper pins its notification icon into the visible tray once (writes `IsPromoted`), so the blink is visible; set `trayIcon: on-blink` to avoid the permanent icon (it may still be filed under the overflow).
 - A cancelled turn is reported as "cancelled" (not "task complete"); set `notifyOnCancel: false` to silence it, or `notifyOnError: false` to silence abnormal-stop alerts.
 - Notifications are deduplicated per session within `dedupMs` (default 1500 ms). A second `idle` for an already-reported turn stays quiet.
 - Multi-question toasts page by re-showing the native toast. Windows animates the old toast out and the new one in, so each page change has a short visual gap; the `已答` line carries the context across it. Multi-question cards always use the long duration (about 25 s).
@@ -242,7 +271,7 @@ The plugin registers no service, tool, or settings namespace — a plain consume
 ```powershell
 npm run build     # publish the helper to artifacts/ and stage it into lib/
 npm run check     # syntax check
-npm test          # flash-policy + smoke + proof-pipeline + helper protocol tests
+npm test          # policy + attention guard + smoke + proof-pipeline + helper protocol tests
 ```
 
 `npm run build` requires the **.NET 10 SDK** (the runtime is enough to run the
@@ -252,12 +281,14 @@ helper is locked while a helper is running, so quit DSH (or stop
 `dsh-toast-question.exe`) before rebuilding. If `dotnet` is not on PATH, set
 `DOTNET` to the full path of the SDK's `dotnet.exe`.
 
-`npm test` runs four suites: `test/flash-policy.mjs` (the flash policy and the
-absence of the old scripts), `test/smoke.mjs` (notification logic with a fake
-helper), `test/proof.mjs` (question → parked answer → tool result → first line,
-using a fake helper that speaks the real protocol), and
-`test/helper-protocol.mjs` (the real exe: `--check`, `ready`, `ping`,
-`shutdown`, and exit on stdin EOF).
+`npm test` runs five suites: `test/policy.mjs` (Config schema ↔ defaults,
+per-event effect resolution, settings-page event keys), `test/flash-policy.mjs`
+(the attention policy guard and the absence of the old scripts),
+`test/smoke.mjs` (notification logic with a fake helper), `test/proof.mjs`
+(question → parked answer → tool result → first line, using a fake helper that
+speaks the real protocol), and `test/helper-protocol.mjs` (the real exe:
+`--check`, `ready`, `ping`, `config`/`attention`, `shutdown`, and exit on stdin
+EOF).
 
 ## Project layout
 
@@ -287,17 +318,20 @@ dsh-notify-win/
 │   ├── Platform/
 │   │   ├── ToastIdentity.cs     # AUMID, Start Menu shortcut, protocol
 │   │   ├── DshWindow.cs         # find/focus/launch DSH
+│   │   ├── Attention.cs         # one StartAttention/StopAttention entry point
+│   │   ├── TrayBlink.cs         # QQ-style tray icon: frames, timer, stop rules
 │   │   └── TaskbarFlash.cs      # FLASHW_TIMERNOFG / FLASHW_STOP
 │   ├── Interop/
 │   │   └── NativeMethods.cs     # P/Invoke, COM interfaces, structs
 │   └── Logging/
 │       └── HelperLog.cs         # optional --log file
 ├── lib/                         # npm package: JS, assets, staged exe
+│   ├── config.js                # DEFAULTS, Config schema, effect policy
 │   ├── index.js                 # host half: events, helper lifecycle, proofs
-│   ├── client.js                # browser-side click-to-focus + card driver
+│   ├── client.js                # browser half: click-to-focus, card driver, settings page
 │   ├── dsh-toast-question.exe   # staged by npm run build (gitignored)
 │   └── dsh-*.png / dsh-*.ico    # branding assets
-├── test/                        # fake helper + four test suites
+├── test/                        # fake helper + five test suites
 ├── docs/                        # landing page and screenshots
 ├── cordis.patch.yml             # DSH bundle patch
 ├── package.json                 # dsh.bundle declaration + scripts
@@ -314,6 +348,7 @@ dsh-notify-win/
 - **V1 (implemented)**: done + compact + question toasts; single-select dropdown with custom answer; Cancel / Send; timeout → taskbar flash.
 - **V1.1 (implemented)**: paged multi-question toast with per-page drafts (dropdown + custom text); multi-select question toast by numbered input; multi-question card driving; honest two-stage receipt backed by the tool result and the model's first line (filled to the toast width, cut with …).
 - **V1.2 (implemented)**: one resident .NET helper for every notification, toast identity, click-to-focus and the taskbar flash; no PowerShell/`.ps1` path; every toast flashes only after it times out.
+- **V1.3 (implemented)**: per-event toast / tray blink / taskbar flash policy with a Settings → Notifications page; the QQ-style tray blink replaces the warm taskbar pulse as the default reminder; the file-change trigger; live config updates without a restart.
 - **V2 (planned)**: fully self-contained packaging (no .NET runtime install) and/or background activation so toast buttons submit without any foreground activation.
 
 ## License

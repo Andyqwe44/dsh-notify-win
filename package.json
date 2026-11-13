@@ -1,7 +1,7 @@
 {
   "name": "dsh-notify-win",
-  "version": "0.5.0",
-  "description": "Native Windows toast + taskbar flash for DeepSeek Harness when a task finishes or your input is needed.",
+  "version": "0.6.0",
+  "description": "Native Windows toast + configurable tray blink / taskbar flash for DeepSeek Harness when a task finishes or your input is needed.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -15,9 +15,12 @@
   ],
   "scripts": {
     "build": "node scripts/build-helper.mjs",
-    "check": "node --check lib/index.js && node --check lib/client.js && node --check scripts/build-helper.mjs",
-    "test": "node test/flash-policy.mjs && node test/smoke.mjs && node test/proof.mjs && node test/helper-protocol.mjs",
+    "check": "node --check lib/config.js && node --check lib/index.js && node --check lib/client.js && node --check scripts/build-helper.mjs",
+    "test": "node test/policy.mjs && node test/flash-policy.mjs && node test/smoke.mjs && node test/proof.mjs && node test/helper-protocol.mjs",
     "prepublishOnly": "npm run build && npm run check && npm test"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "~3.19.0"
   },
   "keywords": [
     "deepseek-harness",

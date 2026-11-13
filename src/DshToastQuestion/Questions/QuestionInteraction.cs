@@ -29,7 +29,7 @@ static partial class Program
             if (action == "cancel")
             {
                 flow.Submitted = true;
-                StopTaskbarFlash();
+                StopAttention();
                 Send(new Dictionary<string, object?>
                 {
                     ["ev"] = "cancel",
@@ -80,7 +80,7 @@ static partial class Program
         }
         catch (Exception error)
         {
-            StopTaskbarFlash();
+            StopAttention();
             Log("activation failed: " + error.Message);
             ShowStatus(flow, new[]
             {
@@ -129,7 +129,7 @@ static partial class Program
     static void Submit(QuestionFlow flow)
     {
         flow.Submitted = true;
-        StopTaskbarFlash();
+        StopAttention();
 
         Send(new Dictionary<string, object?>
         {

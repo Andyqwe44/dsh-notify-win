@@ -44,9 +44,10 @@ function createFakeHelper() {
 
 function createHarness(config = {}) {
   const routes = new Map()
-  const handlers = {}
+  const listeners = new Map()
   const spawns = []
   const disposers = []
+  const WATERFALL_EVENTS = new Set(['tools/execute', 'approval/request'])
   let fake = null
   const ctx = {
     get(name) {
@@ -71,7 +72,11 @@ function createHarness(config = {}) {
       }
       return undefined
     },
-    on(name, fn) { handlers[name] = fn },
+    on(name, fn) {
+      const list = listeners.get(name) ?? []
+      list.push(fn)
+      listeners.set(name, list)
+    },
     effect(fn) {
       const dispose = fn()
       if (typeof dispose === 'function') disposers.push(dispose)
@@ -79,6 +84,27 @@ function createHarness(config = {}) {
     },
   }
   plugin.apply(ctx, { dedupMs: 0, ...config })
+  const handlers = new Proxy({}, {
+    get(_target, name) {
+      const list = listeners.get(String(name)) ?? []
+      if (!WATERFALL_EVENTS.has(name)) {
+        return (...args) => {
+          let result
+          for (const listener of list) result = listener(...args)
+          return result
+        }
+      }
+      return (payload, next) => {
+        let index = 0
+        const step = (previous) => {
+          const listener = list[index++]
+          if (listener === undefined) return previous === undefined ? undefined : previous()
+          return listener(payload, () => step(previous))
+        }
+        return step(next)
+      }
+    },
+  })
   return {
     routes,
     handlers,

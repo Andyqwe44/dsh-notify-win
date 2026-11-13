@@ -50,12 +50,17 @@ export function createFakeHelper() {
 /**
  * Plugin harness for the host tests: no PowerShell, no real helper exe.
  * The fake helper emits `ready` on the next tick and records every op.
+ *
+ * `ctx.on` keeps every listener for an event: the plugin registers two
+ * `tools/execute` listeners (ask_user_question and the file-change trigger),
+ * and the harness composes them like Cordis' waterfall does.
  */
 export function createHarness(plugin, config = {}) {
   const routes = new Map()
-  const handlers = {}
+  const listeners = new Map()
   const spawns = []
   const disposers = []
+  const WATERFALL_EVENTS = new Set(['tools/execute', 'approval/request'])
   let fake = null
 
   const ctx = {
@@ -84,7 +89,11 @@ export function createHarness(plugin, config = {}) {
       }
       return undefined
     },
-    on(name, fn) { handlers[name] = fn },
+    on(name, fn) {
+      const list = listeners.get(name) ?? []
+      list.push(fn)
+      listeners.set(name, list)
+    },
     effect(fn) {
       const dispose = fn()
       if (typeof dispose === 'function') disposers.push(dispose)
@@ -93,6 +102,31 @@ export function createHarness(plugin, config = {}) {
   }
 
   plugin.apply(ctx, { dedupMs: 0, ...config })
+
+  const handlers = new Proxy({}, {
+    get(_target, name) {
+      const list = listeners.get(String(name)) ?? []
+      if (!WATERFALL_EVENTS.has(name)) {
+        return (...args) => {
+          let result
+          for (const listener of list) result = listener(...args)
+          return result
+        }
+      }
+      // Compose the waterfall listeners exactly like Cordis: each receives the
+      // shared payload and a `next` that runs the following listener, ending at
+      // the `next` the test supplied.
+      return (payload, next) => {
+        let index = 0
+        const step = (previous) => {
+          const listener = list[index++]
+          if (listener === undefined) return previous === undefined ? undefined : previous()
+          return listener(payload, () => step(previous))
+        }
+        return step(next)
+      }
+    },
+  })
 
   return {
     routes,

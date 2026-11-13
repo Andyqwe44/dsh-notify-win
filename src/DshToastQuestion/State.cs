@@ -48,4 +48,11 @@ static partial class Program
     // the helper can stop the flash as soon as a DSH window is activated.
     const uint EventSystemForeground = 0x0003;
     const uint WineventOutOfContext = 0x0000;
+
+    // Attention settings sent by the host (`config` op). The helper owns the
+    // tray icon, so it also needs to know whether that icon is permanent or
+    // only appears while it blinks.
+    static volatile string _trayIconMode = "always";
+    static volatile int _blinkIntervalMs = 600;
+    static volatile int _blinkMaxMinutes = 30;
 }

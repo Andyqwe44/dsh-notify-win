@@ -48,17 +48,27 @@ static partial class Program
             Track(tag);
             toast.Activated += (sender, eventArgs) =>
             {
-                StopTaskbarFlash();
+                StopAttention();
                 FocusDsh();
             };
+            // The toast was ignored until Windows retired it: this is the
+            // "user never responded" moment the per-event effects attach to.
             toast.Dismissed += (sender, eventArgs) =>
             {
-                if (eventArgs.Reason == ToastDismissalReason.TimedOut) FlashTaskbar();
+                if (eventArgs.Reason == ToastDismissalReason.TimedOut)
+                {
+                    StartAttention(message.Effects, message.Kind ?? "");
+                }
             };
             if (!ShowToast(toast))
             {
                 Log("notify toast failed; falling back to balloon");
                 ShowBalloon(title, body);
+                StartAttention(message.Effects, message.Kind ?? "");
+            }
+            else if (message.Effects?.Timing == "immediate")
+            {
+                StartAttention(message.Effects, message.Kind ?? "");
             }
             Log("notify: kind=" + (message.Kind ?? "") + " tag=" + tag +
                 " reason=" + (message.Reason ?? "") + " code=" + (message.Code ?? ""));
@@ -152,9 +162,9 @@ static partial class Program
 
     static void CleanupToasts()
     {
-        // The helper is going away: on a hot reload or DSH exit the shell must
-        // not keep a flash armed for a toast nobody owns anymore.
-        StopTaskbarFlash();
+        // The helper is going away: on a hot reload or DSH exit neither the
+        // shell flash nor the notification tray icon may outlive it.
+        StopAttention();
         string[] tags;
         lock (LiveToasts) tags = LiveToasts.ToArray();
         foreach (var tag in tags)

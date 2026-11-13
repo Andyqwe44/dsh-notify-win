@@ -32,6 +32,16 @@
 #                               maxTokensBody: ...
 #                               cancelledTitle: ...
 #                               cancelledBody: ...
+# Notification behavior (also editable in Settings -> 通知):
+#                               eventPolicy:
+#                                 done: { toast: true, blink: true, flash: false }
+#                                 file: { toast: false, blink: false, flash: false }
+#                               attention:
+#                                 timing: after-timeout
+#                                 blinkMaxMinutes: 30
+#                                 trayIcon: always
+#                               fileChangeTitle: '...'
+#                               fileChangeBody: '... {path} ...'
 - insert:
     - id: dsh-notify-win
       name: dsh-notify-win

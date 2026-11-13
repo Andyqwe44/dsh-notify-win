@@ -390,4 +390,94 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   }
 }
 
+// --- Case P..T: per-event effects (toast / tray blink / taskbar flash). ---
+{
+  const root = { session: { id: 'sess-P', header: { delegationDepth: 0 } } }
+
+  // P: toast off, tray blink on -> an effect-only `attention` op.
+  {
+    const h = createHarness(plugin, {
+      dedupMs: 0,
+      eventPolicy: { done: { toast: false, blink: true, flash: false } },
+    })
+    await h.start()
+    h.handlers['agent/status']({ status: 'idle', agent: root })
+    await YIELD()
+    const attention = h.helper().writes.filter((w) => w.op === 'attention')
+    const pOk = attention.length === 1 && notesOf(h).length === 0 &&
+      attention[0].effects.blink === true && attention[0].effects.flash === false
+    console.log(`Case P attention-only: attention=${attention.length}, notifications=${notesOf(h).length} -> ${pOk ? 'PASS' : 'FAIL'}`)
+    if (!pOk) process.exit(1)
+    h.dispose()
+  }
+
+  // Q: every effect off -> nothing at all reaches the helper.
+  {
+    const h = createHarness(plugin, {
+      dedupMs: 0,
+      eventPolicy: { done: { toast: false, blink: false, flash: false } },
+    })
+    await h.start()
+    h.handlers['agent/status']({ status: 'idle', agent: root })
+    await YIELD()
+    const writes = h.helper().writes.filter((w) => w.op === 'notify' || w.op === 'attention')
+    const qOk = writes.length === 0
+    console.log(`Case Q all effects off: ${writes.length} notification op(s) -> ${qOk ? 'PASS' : 'FAIL'}`)
+    if (!qOk) process.exit(1)
+    h.dispose()
+  }
+
+  // R: the toast carries the effect policy the helper applies after timeout.
+  {
+    const h = createHarness(plugin, { dedupMs: 0 })
+    await h.start()
+    h.handlers['agent/status']({ status: 'idle', agent: root })
+    await YIELD()
+    const note = h.helper().writes.find((w) => w.op === 'notify')
+    const rOk = note !== undefined && note.effects?.blink === true &&
+      note.effects?.flash === false && note.effects?.timing === 'after-timeout'
+    console.log(`Case R effects on the toast: ${JSON.stringify(note?.effects)} -> ${rOk ? 'PASS' : 'FAIL'}`)
+    if (!rOk) process.exit(1)
+    h.dispose()
+  }
+
+  // S: a successful file-mutating tool is the "file changed" trigger.
+  {
+    const h = createHarness(plugin, {
+      dedupMs: 0,
+      eventPolicy: { file: { toast: true } },
+    })
+    await h.start()
+    await h.handlers['tools/execute'](
+      { name: 'write', agent: root, arguments: { file_path: 'D:/work/notes.md' } },
+      () => ({ isError: false }),
+    )
+    await YIELD()
+    const fileNote = notesOf(h).find((note) => note.kind === 'file')
+    const sOk = fileNote !== undefined && String(fileNote.body).includes('notes.md')
+    console.log(`Case S file trigger: kind=${fileNote?.kind} body="${fileNote?.body}" -> ${sOk ? 'PASS' : 'FAIL'}`)
+    if (!sOk) process.exit(1)
+    h.dispose()
+  }
+
+  // T: even with its row switched off, a question keeps its interactive toast.
+  {
+    const h = createHarness(plugin, {
+      dedupMs: 0,
+      eventPolicy: { question: { toast: false, blink: false, flash: false } },
+    })
+    await h.start()
+    h.handlers['tools/execute'](
+      { name: 'ask_user_question', agent: root, callId: 'call-T', arguments: { questions: [{ id: 'q1', question: '继续？' }] } },
+      () => 'ok',
+    )
+    await YIELD()
+    const questions = h.helper().writes.filter((w) => w.op === 'question')
+    const tOk = questions.length === 1
+    console.log(`Case T question keeps its toast: ${questions.length} question op(s) -> ${tOk ? 'PASS' : 'FAIL'}`)
+    if (!tOk) process.exit(1)
+    h.dispose()
+  }
+}
+
 console.log('ALL SMOKE TESTS PASSED')

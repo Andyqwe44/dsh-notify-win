@@ -16,8 +16,8 @@ static partial class Program
         var options = q.Options ?? new List<OptionData>();
 
         // A new page (or a different question) replaces the toast that may have
-        // armed the flash, so clear the old attention state before showing it.
-        StopTaskbarFlash();
+        // armed an attention effect, so clear the old state before showing it.
+        StopAttention();
 
         var hint = flow.Hint;
         flow.Hint = "";
@@ -167,11 +167,9 @@ static partial class Program
             string toastTag = flow.QuestionTag;
             toast.Activated += (sender, eventArgs) => OnActivated(flow, page, eventArgs);
             // If the user ignores the question toast and Windows dismisses it
-            // by timeout, ask the shell to flash the DSH taskbar button. The
-            // flash uses FLASHW_TIMERNOFG, so Windows stops it when DSH comes
-            // to the foreground; there is no re-pulse timer. Manual dismissal
-            // does not flash, and a toast replaced by the next page (or one
-            // whose question was already resolved) stays silent.
+            // by timeout, start the configured attention effects. Manual
+            // dismissal stays silent, and a toast replaced by the next page (or
+            // one whose question was already resolved) stays silent too.
             toast.Dismissed += (sender, eventArgs) =>
             {
                 if (eventArgs.Reason != ToastDismissalReason.TimedOut) return;
@@ -182,9 +180,10 @@ static partial class Program
                         !flow.Submitted &&
                         string.Equals(flow.QuestionTag, toastTag, StringComparison.Ordinal);
                 }
-                if (live) FlashTaskbar();
+                if (live) StartAttention(flow.Effects, "question");
             };
             if (!ShowToast(toast)) Log("question toast failed");
+            else if (flow.Effects.Timing == "immediate") StartAttention(flow.Effects, "question");
         }
         catch (Exception error)
         {

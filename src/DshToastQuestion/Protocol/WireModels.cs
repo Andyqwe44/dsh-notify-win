@@ -51,6 +51,29 @@ static partial class Program
         public string? Custom { get; set; }
     }
 
+    /// <summary>
+    /// What the helper should do once an event fires or its toast expires.
+    /// The host owns the policy; the helper only executes it.
+    /// </summary>
+    sealed class EffectPolicy
+    {
+        /// <summary>
+        /// Whether this event's toast should be shown. Only the receipt uses it:
+        /// the host already decides for done/compact/alert/notice, and the
+        /// question/approval card is never suppressed.
+        /// </summary>
+        public bool Toast { get; set; } = true;
+
+        /// <summary>QQ-style tray-icon blink.</summary>
+        public bool Blink { get; set; }
+
+        /// <summary>Taskbar warm pulse (FlashWindowEx).</summary>
+        public bool Flash { get; set; }
+
+        /// <summary>"after-timeout" (default) or "immediate".</summary>
+        public string? Timing { get; set; }
+    }
+
     /// <summary>One inbound command. Unknown members are ignored on purpose.</summary>
     sealed class InboundMessage
     {
@@ -71,6 +94,13 @@ static partial class Program
         public string? Code { get; set; }
         public int? Retry { get; set; }
         public int? RetryMax { get; set; }
+        /// <summary>Effects the host attached to this event/toast.</summary>
+        public EffectPolicy? Effects { get; set; }
+
+        // `config` op: how the notification tray icon behaves.
+        public string? TrayIcon { get; set; }
+        public int? BlinkIntervalMs { get; set; }
+        public int? BlinkMaxMinutes { get; set; }
     }
 
 }

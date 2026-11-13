@@ -149,6 +149,14 @@ static partial class Program
             case "status":
                 ApplyStatus(message);
                 break;
+            // Per-event attention: no toast, only the configured effects.
+            case "attention":
+                StartAttention(message.Effects, message.Kind ?? "");
+                break;
+            // Tray-icon mode and blink timing from the plugin settings.
+            case "config":
+                ApplyBlinkConfig(message);
+                break;
             case "shutdown":
                 _stopping = true;
                 break;

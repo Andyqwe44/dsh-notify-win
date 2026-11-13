@@ -30,14 +30,14 @@ static partial class Program
                     break;
                 }
                 flow.Submitted = true;
-                StopTaskbarFlash();
+                StopAttention();
                 RemoveToast(flow.QuestionTag, QuestionGroup);
                 FinishFlow(flow);
                 break;
             // Exactly one receipt is shown — the model's own first line, on its
             // own. There is no pending, "delivered" or invented fallback toast.
             case "spoken":
-                ShowStatus(flow, new[] { detail ?? "" }, "long");
+                ShowStatus(flow, new[] { detail ?? "" }, "long", message.Effects);
                 FinishFlow(flow);
                 break;
             case "timeout":
@@ -62,7 +62,7 @@ static partial class Program
                 // flow or keep its attention flash alive.
                 if (flow.Submitted) break;
                 flow.Submitted = true;
-                StopTaskbarFlash();
+                StopAttention();
                 ShowStatus(flow, new[]
                 {
                     "该问题已在 DSH 中处理",
@@ -92,11 +92,20 @@ static partial class Program
         }
     }
 
-    /// <summary>Show (or replace) the answer-receipt toast for one flow.</summary>
-    static void ShowStatus(QuestionFlow flow, string[] lines, string duration)
+    /// <summary>
+    /// Show (or replace) the answer-receipt toast for one flow. The receipt is
+    /// informational: when its event policy turns the toast off, only the
+    /// configured attention effects run.
+    /// </summary>
+    static void ShowStatus(QuestionFlow flow, string[] lines, string duration, EffectPolicy? effects = null)
     {
         try
         {
+            if (effects != null && !effects.Toast)
+            {
+                StartAttention(effects, "receipt");
+                return;
+            }
             string durationAttr = string.Equals(duration, "long", StringComparison.OrdinalIgnoreCase) ? "long" : "short";
             var sb = new StringBuilder();
             // A status/receipt toast is informational, but clicking it should
@@ -122,10 +131,22 @@ static partial class Program
             Track(flow.StatusTag);
             toast.Activated += (sender, eventArgs) =>
             {
-                StopTaskbarFlash();
+                StopAttention();
                 FocusDsh();
             };
-            if (!ShowToast(toast)) Log("status toast failed");
+            toast.Dismissed += (sender, eventArgs) =>
+            {
+                if (eventArgs.Reason == ToastDismissalReason.TimedOut) StartAttention(effects, "receipt");
+            };
+            if (!ShowToast(toast))
+            {
+                Log("status toast failed");
+                StartAttention(effects, "receipt");
+            }
+            else if (effects?.Timing == "immediate")
+            {
+                StartAttention(effects, "receipt");
+            }
         }
         catch (Exception error)
         {

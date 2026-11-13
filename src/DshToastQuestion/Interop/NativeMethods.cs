@@ -34,6 +34,9 @@ static partial class Program
     [DllImport("user32.dll")]
     static extern bool FlashWindowEx(ref FLASHWINFO info);
 
+    [DllImport("user32.dll")]
+    static extern bool DestroyIcon(IntPtr hIcon);
+
     delegate void WinEventProc(IntPtr hook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint idEventThread, uint msEventTime);
 
     [DllImport("user32.dll")]
