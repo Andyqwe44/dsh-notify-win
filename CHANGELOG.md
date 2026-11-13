@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   right-aligned number field with its unit beside it. The section is capped at
   720 px and split into three hairline-separated groups — effects, timing, badge
   — instead of one long form.
+- **A jump control in the page header.** The bundle page renders its README
+  above the configuration, and that README is long, so a `plugins.detail.actions`
+  entry adds a 通知设置 / *Notification settings* button that scrolls straight to
+  the section (`scroll-margin-top` keeps the heading below the page's sticky
+  header).
 
 ## [0.7.0] - 2026-11-13
 
