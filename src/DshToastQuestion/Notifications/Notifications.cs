@@ -163,8 +163,8 @@ static partial class Program
     static void CleanupToasts()
     {
         // The helper is going away: on a hot reload or DSH exit neither the
-        // shell flash nor the notification tray icon may outlive it.
-        StopAttention();
+        // shell flash nor the badge on DSH's taskbar button may outlive it.
+        DisposeAttention();
         string[] tags;
         lock (LiveToasts) tags = LiveToasts.ToArray();
         foreach (var tag in tags)

@@ -75,9 +75,9 @@ function assert(ok, label) {
   const pong = await helper.next((m) => m.ev === 'pong')
   assert(pong.ev === 'pong', 'ping answers pong')
 
-  // Tray settings and an effect-only attention message must parse and leave
+  // Badge timing and an effect-only attention message must parse and leave
   // the helper alive. Every effect is off, so nothing is shown.
-  helper.send({ op: 'config', trayIcon: 'on-blink', blinkIntervalMs: 600, blinkMaxMinutes: 30 })
+  helper.send({ op: 'config', blinkIntervalMs: 600, blinkMaxMinutes: 30 })
   helper.send({
     op: 'attention',
     kind: 'done',

@@ -141,12 +141,12 @@ static partial class Program
         {
             if (idObject != 0) return; // OBJID_WINDOW only
             var armed = ArmedFlashWindow();
-            // The hook also runs for a tray blink that has no taskbar flash.
-            if (armed == IntPtr.Zero && !TrayBlinking()) return;
+            // The hook also runs for a badge blink that has no taskbar flash.
+            if (armed == IntPtr.Zero && !BadgeBlinking()) return;
             if (hwnd == armed || IsDshWindow(hwnd))
             {
                 Log("flash stopped: DSH is foreground");
-                // Also retire a tray blink running on its own.
+                // Also retire a badge blink running on its own.
                 StopAttention();
             }
         }

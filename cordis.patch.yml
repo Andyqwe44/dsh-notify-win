@@ -39,7 +39,6 @@
 #                               attention:
 #                                 timing: after-timeout
 #                                 blinkMaxMinutes: 30
-#                                 trayIcon: always
 #                               fileChangeTitle: '...'
 #                               fileChangeBody: '... {path} ...'
 - insert:

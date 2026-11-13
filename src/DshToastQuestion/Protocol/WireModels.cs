@@ -64,7 +64,7 @@ static partial class Program
         /// </summary>
         public bool Toast { get; set; } = true;
 
-        /// <summary>QQ-style tray-icon blink.</summary>
+        /// <summary>Blinking unread badge on the DSH taskbar button.</summary>
         public bool Blink { get; set; }
 
         /// <summary>Taskbar warm pulse (FlashWindowEx).</summary>
@@ -97,8 +97,7 @@ static partial class Program
         /// <summary>Effects the host attached to this event/toast.</summary>
         public EffectPolicy? Effects { get; set; }
 
-        // `config` op: how the notification tray icon behaves.
-        public string? TrayIcon { get; set; }
+        // `config` op: how fast the taskbar badge blinks and when it stops.
         public int? BlinkIntervalMs { get; set; }
         public int? BlinkMaxMinutes { get; set; }
     }

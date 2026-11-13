@@ -1,7 +1,7 @@
 {
   "name": "dsh-notify-win",
-  "version": "0.6.0",
-  "description": "Native Windows toast + configurable tray blink / taskbar flash for DeepSeek Harness when a task finishes or your input is needed.",
+  "version": "0.7.0",
+  "description": "Native Windows toast + configurable taskbar badge / taskbar flash for DeepSeek Harness when a task finishes or your input is needed.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

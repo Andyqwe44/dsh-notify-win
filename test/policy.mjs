@@ -2,8 +2,8 @@
 //
 // The host resolves one event -> effects row per notification. These checks
 // pin the schema/DEFAULTS alignment (a missing key would make DSH reject a
-// user's existing YAML), the default matrix (toast + tray blink instead of the
-// taskbar flash), the interactive rows that can never lose their toast, and
+// user's existing YAML), the default matrix (toast + taskbar badge instead of
+// the taskbar flash), the interactive rows that can never lose their toast, and
 // that the browser settings page lists exactly the host's event keys.
 import { readFile } from 'node:fs/promises'
 import plugin from '../lib/index.js'
@@ -42,11 +42,11 @@ const policy = plain(resolved.eventPolicy)
 const attention = plain(resolved.attention)
 check(JSON.stringify(policy) === JSON.stringify(DEFAULT_EVENT_POLICY), 'resolved event policy equals the defaults')
 check(attention.timing === 'after-timeout', 'effects start after the toast times out by default')
-check(attention.trayIcon === 'always', 'the tray icon is always visible by default')
 check(attention.blinkMaxMinutes === 30 && attention.blinkIntervalMs === 600, 'blink defaults are 30 min / 600 ms')
+check(!('trayIcon' in attention), 'the helper tray icon is no longer configured')
 
-// --- Default matrix: the warm flash is replaced by the tray blink. ---
-check(DEFAULT_EVENT_POLICY.done.toast && DEFAULT_EVENT_POLICY.done.blink, 'done: toast + tray blink by default')
+// --- Default matrix: the warm flash is replaced by the taskbar badge. ---
+check(DEFAULT_EVENT_POLICY.done.toast && DEFAULT_EVENT_POLICY.done.blink, 'done: toast + taskbar badge by default')
 check(DEFAULT_EVENT_POLICY.done.flash === false, 'done: no taskbar flash by default')
 check(DEFAULT_EVENT_POLICY.file.toast === false && DEFAULT_EVENT_POLICY.file.blink === false, 'file events stay silent by default')
 
@@ -71,11 +71,12 @@ check(resolveEffects(noToast, 'question').toast === true, 'question toast cannot
 check(resolveEffects(noToast, 'approval').toast === true, 'approval toast cannot be suppressed')
 
 // --- Attention settings are clamped for the helper. ---
-const clamped = attentionSettings({ attention: { trayIcon: 'on-blink', blinkIntervalMs: 1, blinkMaxMinutes: -5 } })
-check(clamped.trayIcon === 'on-blink', 'tray mode is forwarded')
+const clamped = attentionSettings({ attention: { blinkIntervalMs: 1, blinkMaxMinutes: -5 } })
 check(clamped.blinkIntervalMs === 200, 'blink interval is clamped to 200 ms')
 check(clamped.blinkMaxMinutes === 0, 'blink limit is clamped to 0 minutes')
-check(attentionSettings({}).trayIcon === 'always', 'missing attention config keeps the defaults')
+const untrusted = attentionSettings({ attention: { blinkIntervalMs: 'x', blinkMaxMinutes: undefined } })
+check(untrusted.blinkIntervalMs === 600 && untrusted.blinkMaxMinutes === 30,
+  'missing attention config keeps the defaults')
 
 // --- Cordis reads Config from the default export object. ---
 check(plugin.Config === Config, 'Config is exported on the default plugin object')

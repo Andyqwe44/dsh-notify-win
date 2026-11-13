@@ -1,12 +1,12 @@
 # dsh-notify-win
 
-> DeepSeek Harness（DSH）Windows 通知插件：任务完成或需要你回答时弹出原生 toast，被忽略后以 QQ 式的托盘图标闪烁提醒（任务栏暖流改为可选）。每个事件都能在「设置 → 通知」里单独配置。
+> DeepSeek Harness（DSH）Windows 通知插件：任务完成或需要你回答时弹出原生 toast，被忽略后在 DSH 自己的任务栏按钮上点亮 QQ 式红色未读角标（任务栏暖流改为可选）。每个事件都能在「设置 → 通知」里单独配置。
 
 [English](README.md) | 中文
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.6.0-blue)
+![version](https://img.shields.io/badge/version-0.7.0-blue)
 
 ## 📸 截图
 
@@ -22,16 +22,16 @@
 
 ![单选问题 toast](docs/assets/screenshots/question-single-select.png)
 
-### toast 超时 → 托盘闪烁（默认）/ 任务栏暖流（可选）
+### toast 超时 → 任务栏红点（默认）/ 任务栏暖流（可选）
 
 <img src="docs/assets/screenshots/taskbar-flash.png" alt="toast 超时后的提醒" style="max-width: 900px; width: 100%;" />
 
-> 截图来自 Windows 11。默认提醒是 QQ 式的通知托盘图标（红色未读圆点闪烁）；上图的系统暖色任务栏闪烁现在需要按事件手动开启。
+> 截图来自 Windows 11。默认提醒是 DSH 自己的任务栏按钮右下角亮起红色未读角标（QQ 样式）；上图的系统暖色任务栏闪烁现在需要按事件手动开启。
 
 ## ✨ 功能
 
 - 🔔 **原生 Windows toast**（右下角，Win10/11 系统样式）
-- 🔴 **QQ 式托盘闪烁** —— helper 自己注册一个「通知」托盘图标，toast 被忽略时红色未读圆点开始闪烁；回到 DSH 前台、点击图标、或问题被回答后停止
+- 🔴 **QQ 式任务栏红点** —— toast 被忽略时，DSH 自己的任务栏按钮右下角开始闪烁红色未读角标（`ITaskbarList3` 覆盖图标），托盘区不会新增图标；回到 DSH 前台、回答问题、或到达时长上限后停止
 - 💡 **可选任务栏暖流**（`FlashWindowEx`）—— 默认关闭，可按事件开启；系统在 DSH 回到前台时停止
 - 🖱️ **点击跳转** — 点击 toast 自动打开 DSH 并切换到对应会话
 - ✅ **任务完成**时触发（根 agent 进入 `idle`）
@@ -42,7 +42,7 @@
 - 🧷 **常驻 helper，跟随插件生命周期**：插件加载时启动一个 `dsh-toast-question.exe`，之后每次提问复用；在插件里关掉插件或退出 DSH 时回收（DSH 退出会关闭 stdio，helper 读到 EOF 自行退出），不再每次提问都拉起新进程，也不会留下孤儿进程。
 - ✅ **只有一条、不撒谎的回执**：点 Send 后问题 toast 直接收起，中间没有任何「已提交 / 已送达 / 已收到并回应」步骤；模型回答后只弹一条 toast，内容就是 **模型返回的第一行**（铺满 toast 一行宽度，超长以 `…` 截断，没有标题行）——这句话只可能来自真实完成的整条链路。模型没有可见文本时不弹回执（不编造）。取消会明确写「没有向 DSH 提交任何答案」；卡片填不进去则提示「请在 DSH 窗口中手动回答」。
 - 🖱️ **在 toast 里回答能直接送达 agent**：所选选项（含自定义文本、多个问题）会落到官方提问卡片并提交，卡住的 `ask_user_question` 立即返回
-- ⏰ **逐事件提醒**：每个事件（任务完成、压缩完成、回答回执、需要回答、需要批准、异常停止、已取消、文件修改）都能单独选择 toast / 托盘闪烁 / 任务栏暖流，并选择提醒在 toast 超时后开始还是事件发生时立即开始。在 **设置 → 通知** 里勾选，改动即时生效、无需重启。
+- ⏰ **逐事件提醒**：每个事件（任务完成、压缩完成、回答回执、需要回答、需要批准、异常停止、已取消、文件修改）都能单独选择 toast / 任务栏红点 / 任务栏暖流，并选择提醒在 toast 超时后开始还是事件发生时立即开始。在 **设置 → 通知** 里勾选，改动即时生效、无需重启。
 - 🖼️ 不使用 hero 大图：所有通知都只有应用角标，保持紧凑
 - 🪪 通知归属显示 **DeepSeek Harness** 与自带图标（自注册 AppUserModelID）；只有在品牌 notifier 无法创建时才退回系统 PowerShell 身份
 - 🚀 不注册 DSH 服务、不经过模型审批、不占用 settings 命名空间——只有一个常驻 helper 子进程
@@ -145,7 +145,6 @@ dsh plugin --profile web add dsh-notify-win
       timing: 'after-timeout'   # 'after-timeout'（toast 超时后）或 'immediate'（事件发生时）
       blinkMaxMinutes: 30       # 0 = 一直闪到你回来
       blinkIntervalMs: 600
-      trayIcon: 'always'        # 'always'（DSH 运行期间常驻）或 'on-blink'
     fileChangeTitle: 'DeepSeek Harness · 文件已修改'
     fileChangeBody: '已更新 {path}'
 
@@ -171,9 +170,9 @@ dsh plugin --profile web add dsh-notify-win
 
 ### 通知行为（设置 → 通知）
 
-同一张策略表也可以直接在 DSH 里勾选：**设置 → 通知**（由插件浏览器端注册）。每行是一个事件，三列分别是 toast、托盘闪烁、任务栏暖流。`eventPolicy` / `attention` 声明为 `.volatile()`，所以勾选会通过 DSH 的设置通道写入，运行中的插件在下一条通知就按新值执行，无需重启。
+同一张策略表也可以直接在 DSH 里勾选：**设置 → 通知**（由插件浏览器端注册）。每行是一个事件，三列分别是 toast、任务栏红点、任务栏暖流。`eventPolicy` / `attention` 声明为 `.volatile()`，所以勾选会通过 DSH 的设置通道写入，运行中的插件在下一条通知就按新值执行，无需重启。
 
-关于托盘图标：DSH 的托盘图标属于 Electron 主进程，插件无法从外部动画它，因此 helper 注册自己的「通知」图标。Windows 11 默认把全新托盘图标收进 `^` 溢出区，helper 首次显示时会把这个图标固定到可见托盘（`HKCU\Control Panel\NotifyIconSettings` 的 `IsPromoted`），这样闪烁才看得见；不想要常驻图标时把 `trayIcon` 设为 `on-blink`。
+关于任务栏红点：DSH 自己的托盘图标属于 Electron 主进程，插件无法从外部动画它（宿主是主进程 spawn 的子进程，渲染端也没有对应 IPC）。所以红点画在 DSH 的**任务栏按钮**上——`ITaskbarList3::SetOverlayIcon` 是跨进程可用的原生接口，和 helper 现在用的 `FlashWindowEx` 同一层。好处是不新增托盘图标、不需要在 `^` 溢出区里固定任何东西；代价是窗口被隐藏到托盘时没有任务栏按钮可画，红点会在窗口重新可见后出现（这段时间由 toast 及其在通知中心里的残留承担提醒）。
 
 禁用插件：
 
@@ -219,7 +218,7 @@ dsh plugin --profile web add dsh-notify-win
 | helper 生命周期 | 插件 `apply` 启动 → `ctx.effect` 销毁时发 `shutdown`；DSH 退出关闭 stdin（EOF），helper 自行退出；宿主崩溃也不会留下孤儿 |
 | 任务栏闪烁 | `EnumWindows` + `FlashWindowEx`（`FLASHW_TRAY \| FLASHW_TIMERNOFG` = `2 \| 12` = 14；系统在 DSH 回到前台时停止，无周期重闪） |
 | 效果策略 | `lib/config.js` 为每个事件解析 `{toast, blink, flash, timing}`；宿主随 `notify` / `question` 发给 helper，helper 在显示时（`immediate`）或 toast 超时关闭时（`after-timeout`）执行 |
-| 托盘闪烁 | helper 在自己的 STA 线程 + WinForms 消息循环上持有 `NotifyIcon`；两帧图标闪烁红色未读圆点，在 DSH 前台、点击图标、回答/解决、或到达时长上限时停止 |
+| 托盘红点 | helper 在自己的 STA 线程上持有 `ITaskbarList3`，用 `SetOverlayIcon` 在 DSH 的任务栏按钮右下角闪烁红色角标；在 DSH 前台、回答/解决、或到达时长上限时清除。不注册托盘图标 |
 | 文件修改触发 | `tools/execute` 中 `write` / `edit` / `apply_patch` / `str_replace_editor` 成功返回（仅根 agent） |
 | 执行方式 | 所有通知、提问和 toast 点击都走常驻 .NET helper；没有 PowerShell 路径 |
 
@@ -241,12 +240,12 @@ dsh plugin --profile web add dsh-notify-win
 ## 已知限制
 
 - 原生 toast 文本很紧凑，大约只能显示 4 行，长内容会被截断。
-- 原生下拉框弹出列表时，鼠标移到弹层上可能导致 toast 收起；如果随后 toast 超时关闭，配置的提醒（默认托盘闪烁）仍会提醒你，回到 DSH 前台后即停。
+- 原生下拉框弹出列表时，鼠标移到弹层上可能导致 toast 收起；如果随后 toast 超时关闭，配置的提醒（默认任务栏红点）仍会提醒你，回到 DSH 前台后即停。
 - .NET 10 Desktop Runtime 是硬性要求。没有它 helper 无法启动，所有通知都不会出现；宿主会写明确的错误日志。没有 PowerShell 兜底。
 - helper 是单个常驻进程。它崩溃后，下一条通知会让宿主重新拉起；在此之前通知会被丢弃并记录日志。
 - `FlashWindowEx` 使用系统自带暖色脉冲，无法自定义颜色。
-- Windows 不会闪烁前台窗口——只有 DSH 在后台时任务栏按钮才会闪；已经开始的闪烁在回到前台时由系统停止。托盘闪烁是独立的：DSH 任意窗口激活时同样停止。
-- Windows 11 默认把全新托盘图标收进 `^` 溢出区。helper 会把「通知」图标固定到可见托盘一次（写 `IsPromoted`），所以闪烁可见；不需要这个图标时设 `trayIcon: on-blink`，但它仍可能被放进溢出区。
+- Windows 不会闪烁前台窗口——只有 DSH 在后台时任务栏按钮才会闪；已经开始的闪烁在回到前台时由系统停止。任务栏红点是独立的：DSH 任意窗口激活时同样停止。
+- 任务栏红点需要 DSH 有一个任务栏按钮；窗口被隐藏到托盘时按钮不存在，红点会在窗口重新可见后出现（`attention.blinkMaxMinutes` 决定它最多亮多久，0 = 直到你回来）。
 - 取消的一轮会如实报「已取消」而不是「任务完成」；可用 `notifyOnCancel: false` 静音，或用 `notifyOnError: false` 静音异常停止告警。
 - 通知按会话在 `dedupMs`（默认 1500ms）内去重；同一轮重复的 `idle` 不会重复通知。
 - 多问题 toast 通过重新显示原生 toast 来翻页，Windows 会把旧 toast 收起、新 toast 滑入，因此每次翻页都有一小段视觉间隔；`已答` 行用于跨页保留上下文。多问题卡片固定使用 long 时长（约 25 秒）。
@@ -296,10 +295,11 @@ dsh-notify-win/
 │   │   ├── ToastIdentity.cs     # AUMID、Start Menu 快捷方式、协议
 │   │   ├── DshWindow.cs         # 查找/聚焦/启动 DSH
 │   │   ├── Attention.cs         # 统一的 StartAttention/StopAttention 入口
-│   │   ├── TrayBlink.cs         # QQ 式托盘图标：帧、定时器、停止条件
+│   │   ├── TaskbarBadge.cs      # QQ 式任务栏红点：覆盖图标、定时器、停止条件
 │   │   └── TaskbarFlash.cs      # FLASHW_TIMERNOFG / FLASHW_STOP
 │   ├── Interop/
-│   │   └── NativeMethods.cs     # P/Invoke、COM 接口、结构体
+│   │   ├── NativeMethods.cs     # P/Invoke、结构体
+│   │   └── TaskbarList3.cs      # ITaskbarList3 覆盖图标接口
 │   └── Logging/
 │       └── HelperLog.cs         # 可选 --log 文件
 ├── lib/                         # npm 包目录：JS、素材、构建后复制进来的 exe
@@ -325,7 +325,8 @@ dsh-notify-win/
 - **V1（已实现）**：完成 + 压缩 + 问题 toast；单选下拉框 + 自定义答案；取消 / Send；超时 → 任务栏闪烁。
 - **V1.1（已实现）**：分页多问题 toast（每页草稿独立保存，含下拉框和自定义文本）；多选问题 toast（编号输入）；多问题卡片驱动；由 tool result 与模型第一行支撑的两段式真实回执。
 - **V1.2（已实现）**：一个常驻 .NET helper 统一负责所有通知、toast 身份、点击聚焦和任务栏闪烁；没有 PowerShell/`.ps1` 路径；所有 toast 都只在超时后闪烁。
-- **V1.3（已实现）**：逐事件选择 toast / 托盘闪烁 / 任务栏暖流，并提供「设置 → 通知」页面；QQ 式托盘闪烁取代任务栏暖流成为默认提醒；新增文件修改触发；配置热更新、无需重启。
+- **V1.3（已实现）**：逐事件选择 toast / 任务栏红点 / 任务栏暖流，并提供「设置 → 通知」页面；红点取代任务栏暖流成为默认提醒；新增文件修改触发；配置热更新、无需重启。
+- **V1.4（已实现）**：红点改画在 DSH 自己的任务栏按钮上（`ITaskbarList3` 覆盖图标），删除 helper 自建托盘图标、Win11 溢出区固定逻辑和 `trayIcon` 配置。
 - **V2（计划中）**：完全自包含打包（无需安装 .NET 运行时）和/或后台激活，让 toast 按钮无需前台激活即可直接提交。
 
 ## License

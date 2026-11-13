@@ -88,6 +88,9 @@ static partial class Program
         // Menu shortcut must never stop notifications or the protocol handler.
         try { EnsureToastIdentity(); } catch (Exception error) { Log("identity registration failed: " + error.Message); }
         try { EnsureDshProtocol(); } catch (Exception error) { Log("protocol registration failed: " + error.Message); }
+        // A helper killed mid-blink would leave its red dot on DSH's taskbar
+        // button; clear it once, best-effort, before anything new is armed.
+        try { ClearStaleTaskbarBadge(); } catch (Exception error) { Log("badge reset failed: " + error.Message); }
 
         var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false))
         {
@@ -153,9 +156,9 @@ static partial class Program
             case "attention":
                 StartAttention(message.Effects, message.Kind ?? "");
                 break;
-            // Tray-icon mode and blink timing from the plugin settings.
+            // Badge blink timing from the plugin settings.
             case "config":
-                ApplyBlinkConfig(message);
+                ApplyAttentionConfig(message);
                 break;
             case "shutdown":
                 _stopping = true;

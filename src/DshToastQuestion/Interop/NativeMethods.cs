@@ -37,6 +37,12 @@ static partial class Program
     [DllImport("user32.dll")]
     static extern bool DestroyIcon(IntPtr hIcon);
 
+    [DllImport("ole32.dll")]
+    static extern int CoInitializeEx(IntPtr reserved, uint flags);
+
+    [DllImport("ole32.dll")]
+    static extern void CoUninitialize();
+
     delegate void WinEventProc(IntPtr hook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint idEventThread, uint msEventTime);
 
     [DllImport("user32.dll")]

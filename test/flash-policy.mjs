@@ -1,11 +1,12 @@
 // Attention guard for the .NET helper.
 //
 // The taskbar flash is no longer the default: each event's policy decides
-// whether the helper shows a toast, blinks the notification tray icon, pulses
-// the taskbar button, or does several of them. The flash must stay OS-owned
-// (FLASHW_TRAY | FLASHW_TIMERNOFG) and stop when DSH comes to the foreground;
-// there is still no periodic re-pulse timer. The QQ-style tray blink lives in
-// TrayBlink.cs, and every path routes through StartAttention/StopAttention.
+// whether the helper shows a toast, blinks the unread badge on DSH's own
+// taskbar button, pulses the taskbar button, or does several of them. The
+// flash must stay OS-owned (FLASHW_TRAY | FLASHW_TIMERNOFG) and stop when DSH
+// comes to the foreground; there is still no periodic re-pulse timer. The
+// QQ-style badge lives in TaskbarBadge.cs (ITaskbarList3 overlay, no extra tray
+// icon), and every path routes through StartAttention/StopAttention.
 //
 // This test also pins that the PowerShell/VBS scripts are really gone, so a
 // future change cannot quietly reintroduce a second implementation.
@@ -76,14 +77,14 @@ check(
 // --- One attention entry point, driven by the host policy. ---
 check(/static void StartAttention\(EffectPolicy\? effects, string reason\)/.test(source),
   'helper has one StartAttention entry point')
-check(/if \(effects\.Blink\) StartTrayBlink/.test(source), 'StartAttention arms the tray blink when enabled')
+check(/if \(effects\.Blink\) StartTaskbarBadge/.test(source), 'StartAttention arms the taskbar badge when enabled')
 check(/if \(effects\.Flash\) FlashTaskbar/.test(source), 'StartAttention arms the taskbar flash when enabled')
 check(
-  /static void StopAttention\(\)[\s\S]{0,160}StopTaskbarFlash\(\)[\s\S]{0,160}StopTrayBlink\(\)/.test(source),
+  /static void StopAttention\(\)[\s\S]{0,160}StopTaskbarFlash\(\)[\s\S]{0,160}StopTaskbarBadge\(\)/.test(source),
   'StopAttention stops both effects',
 )
 check(/case "attention":/.test(source), 'helper accepts an effect-only attention op')
-check(/case "config":/.test(source), 'helper accepts the tray/blink config op')
+check(/case "config":/.test(source), 'helper accepts the badge timing config op')
 
 // --- Toast dismissal honours the per-event policy, not a hard-coded flash. ---
 check(/StartAttention\(message\.Effects/.test(source), 'notify toasts start their configured effects')
@@ -92,17 +93,24 @@ check(/effects\?\.Timing == "immediate"/.test(source) && /Timing == "immediate"/
   'helper honours the immediate timing')
 check(/!effects\.Toast/.test(source), 'the receipt toast can be turned off')
 
-// --- QQ-style tray blink. ---
-check(/static void StartTrayBlink\(/.test(source), 'helper owns the tray blink start')
-check(/static void StopTrayBlink\(/.test(source), 'helper owns the tray blink stop')
-check(/NotifyIcon/.test(source), 'the blink uses a NotifyIcon')
-check(/Application\.Run\(context\)/.test(source), 'the tray icon runs on its own message loop')
-check(/SetApartmentState\(ApartmentState\.STA\)/.test(source), 'the tray thread is STA')
-check(/TestDshWindowFocused\(\)/.test(source), 'the tray blink stops when DSH is foreground')
-check(/DestroyIcon\(handle\)/.test(source), 'drawn tray icons release their HICON')
-check(/static void TickBlink\(\)/.test(source) && /_blinkMaxMinutes/.test(source),
-  'the tray blink has an expiry guard')
-check(/Tray icon build failed|BuildBlinkIcon/.test(source), 'the tray frames are built at runtime')
+// --- QQ-style unread badge on DSH's own taskbar button. ---
+check(await gone('../src/DshToastQuestion/Platform/TrayBlink.cs'), 'the extra tray icon implementation is gone')
+check(!/_trayIconMode|StartTrayBlink|StopTrayBlink|TrayBlinking/.test(source),
+  'no tray-blink code remains in the helper')
+check(/static void StartTaskbarBadge\(/.test(source), 'helper owns the badge start')
+check(/static void StopTaskbarBadge\(/.test(source), 'helper owns the badge stop')
+check(/ITaskbarList3/.test(source) && /SetOverlayIcon/.test(source),
+  'the badge is an ITaskbarList3 overlay on the DSH window')
+check(/CoInitializeEx\(/.test(source), 'the badge thread initializes COM')
+check(/SetApartmentState\(ApartmentState\.STA\)/.test(source), 'the badge thread is STA')
+check(/TestDshWindowFocused\(\)/.test(source), 'the badge stops when DSH is foreground')
+check(/DestroyIcon\(icon\)/.test(source), 'the drawn badge releases its HICON')
+check(/_blinkMaxMinutes/.test(source) && /taskbar badge stopped: timed out/.test(source),
+  'the badge has an expiry guard')
+check(/static void DisposeTaskbarBadge\(/.test(source) && /DisposeTaskbarBadge\(\)/.test(source),
+  'the badge is cleared synchronously before the helper exits')
+check(/static void ClearStaleTaskbarBadge\(/.test(source) && /ClearStaleTaskbarBadge\(\);/.test(source),
+  'a stale badge from a killed helper is cleared on startup')
 
 // --- Existing helper seams stay intact. ---
 check(/static bool ShowToast/.test(source), 'helper owns toast delivery')

@@ -4,9 +4,10 @@ static partial class Program
 {
     // ---------------------------------------------------------------------
     // Attention effects. The host decides, per event, whether a notification
-    // is a toast, a tray blink, a taskbar flash, or any combination of them.
-    // This is the single place the helper arms/retires them, so every toast
-    // path (question, approval, done, receipt, effect-only) behaves the same.
+    // is a toast, a taskbar badge blink, a taskbar flash, or any combination of
+    // them. This is the single place the helper arms/retires them, so every
+    // toast path (question, approval, done, receipt, effect-only) behaves the
+    // same.
     // ---------------------------------------------------------------------
 
     /// <summary>
@@ -14,7 +15,7 @@ static partial class Program
     /// DSH is already in front: there is nothing to attract the user to.
     /// </summary>
     /// <param name="effects">Host policy; null means "no effects".</param>
-    /// <param name="reason">Event key or human label, used for the tray tooltip.</param>
+    /// <param name="reason">Event key or human label, used for the badge tooltip.</param>
     static void StartAttention(EffectPolicy? effects, string reason)
     {
         if (effects == null)
@@ -33,7 +34,7 @@ static partial class Program
             Log("attention: blink=" + effects.Blink + " flash=" + effects.Flash +
                 " timing=" + (effects.Timing ?? "") + " focused=" + focused + " (" + reason + ")");
             if (focused) return;
-            if (effects.Blink) StartTrayBlink(reason, _blinkIntervalMs, _blinkMaxMinutes);
+            if (effects.Blink) StartTaskbarBadge(reason, _blinkIntervalMs, _blinkMaxMinutes);
             if (effects.Flash) FlashTaskbar();
         }
         catch (Exception error)
@@ -47,6 +48,13 @@ static partial class Program
     static void StopAttention()
     {
         StopTaskbarFlash();
-        StopTrayBlink();
+        StopTaskbarBadge();
+    }
+
+    /// <summary>Retire every effect and wait for the owned badge to be cleared.</summary>
+    static void DisposeAttention()
+    {
+        StopTaskbarFlash();
+        DisposeTaskbarBadge();
     }
 }
