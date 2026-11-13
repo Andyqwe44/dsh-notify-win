@@ -58,10 +58,12 @@
 ## 🚀 一行安装
 
 ```powershell
-dsh plugin --profile web add dsh-notify-win
+dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 ```
 
 > 需要 `pnpm` 在 PATH 中（没有就先 `corepack enable`）。详见 [安装](#安装)。
+>
+> npm 上的 `dsh-notify-win` 还停在 `0.1.1`（当时的 PowerShell 版），`0.8.1` 因账号 2FA 暂未发布；在那之前请用 GitHub 源安装，仓库里的就是最新版。
 
 ## 安装
 
@@ -81,14 +83,14 @@ dsh plugin --profile web add dsh-notify-win
 2. **安装插件**
 
    ```powershell
-   # 从 npm 安装（推荐）
-   dsh plugin --profile web add dsh-notify-win
-
-   # 或从 GitHub 直接安装：
+   # 从 GitHub 安装（推荐：npm 上的版本落后于仓库）
    dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
    # 若 github: 失败（网络受限），改用 SSH：
    dsh plugin --profile web add git+ssh://git@github.com/Andyqwe44/dsh-notify-win.git
+
+   # 桌面版也可以在「插件 → 添加插件」里直接填这个地址：
+   #   github:Andyqwe44/dsh-notify-win
    ```
 
 3. **验证**

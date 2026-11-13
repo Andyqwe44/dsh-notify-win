@@ -112,7 +112,7 @@
     </ul>
 
     <h2>🚀 一行安装</h2>
-    <pre><code>dsh plugin --profile web add dsh-notify-win</code></pre>
+    <pre><code>dsh plugin --profile web add github:Andyqwe44/dsh-notify-win</code></pre>
 
     <h2>📦 安装详情</h2>
     <pre><code># 前置：.NET 10 Desktop Runtime（必需）
@@ -122,7 +122,8 @@ winget install Microsoft.DotNet.DesktopRuntime.10
 corepack enable
 
 # 安装
-dsh plugin --profile web add dsh-notify-win
+# 说明：npm 版本落后，暂用 GitHub 源
+dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
 # 验证
 dsh --profile web --dump-config

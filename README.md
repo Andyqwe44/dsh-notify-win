@@ -58,10 +58,12 @@ English | [中文](README.zh.md)
 ## 🚀 One-line install
 
 ```powershell
-dsh plugin --profile web add dsh-notify-win
+dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 ```
 
 > Requires `pnpm` on PATH (`corepack enable` if missing). See [Install](#install) for details.
+>
+> The npm package still sits at `0.1.1` (the old PowerShell implementation); `0.8.1` is not published yet because the account's 2FA device is lost. Install from GitHub — the repository is the current version.
 
 ## Install
 
@@ -81,14 +83,14 @@ dsh plugin --profile web add dsh-notify-win
 2. **Install the plugin**
 
    ```powershell
-   # From npm (recommended)
-   dsh plugin --profile web add dsh-notify-win
-
-   # Or directly from GitHub:
+   # From GitHub (recommended while the npm release is behind)
    dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
    # If github: is blocked, use SSH:
    dsh plugin --profile web add git+ssh://git@github.com/Andyqwe44/dsh-notify-win.git
+
+   # The desktop app accepts the same address in Plugins -> Add plugin:
+   #   github:Andyqwe44/dsh-notify-win
    ```
 
 3. **Verify**
