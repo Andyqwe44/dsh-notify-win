@@ -87,6 +87,11 @@ const rowsSource = /const EVENT_ROWS = \[([^\]]+)\]/.exec(client)
 const clientKeys = rowsSource === null ? [] : [...rowsSource[1].matchAll(/'([a-z]+)'/g)].map((match) => match[1])
 check(clientKeys.join(',') === EVENT_KEYS.join(','), 'client settings rows match the host event keys')
 
+// --- The settings section belongs to the plugin's own page. ---
+check(client.includes("'plugins.bundle.config'"), 'client registers the plugin page section')
+check(client.includes('key: SETTINGS_ID'), 'the section is keyed by the plugin package name')
+check(!client.includes("'settings.section'"), 'client no longer adds a global Settings entry')
+
 // --- The file trigger covers the write tools. ---
 check(FILE_WRITE_TOOLS.has('write') && FILE_WRITE_TOOLS.has('edit') &&
   FILE_WRITE_TOOLS.has('apply_patch') && FILE_WRITE_TOOLS.has('str_replace_editor'),

@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-13
+
+### Changed
+
+- **Settings moved onto the plugin's own page.** The notification matrix is no
+  longer a **Settings → Notifications** section: the client half now registers
+  `plugins.bundle.config` (keyed by the package name) instead of a
+  `settings.section`, so it renders on **插件 → dsh-notify-win** and the global
+  Settings list stops growing by one entry per installed plugin. Nothing else
+  changed about the writes: each control still commits through `configForms`,
+  which applies to the running plugin without a restart.
+- **Tighter, quieter layout.** Switches come from the host's own `Switch`
+  primitive (native checkboxes when a deployment does not expose it), the timing
+  choice is a `SegmentedControl` (radio fallback), and the blink limit is a small
+  right-aligned number field with its unit beside it. The section is capped at
+  720 px and split into three hairline-separated groups — effects, timing, badge
+  — instead of one long form.
+
 ## [0.7.0] - 2026-11-13
 
 ### Changed

@@ -1,6 +1,6 @@
 # dsh-notify-win
 
-> DeepSeek Harness（DSH）Windows 通知插件：任务完成或需要你回答时弹出原生 toast，被忽略后在 DSH 自己的托盘图标上点亮 QQ 式红色未读角标（任务栏暖流改为可选）。每个事件都能在「设置 → 通知」里单独配置。
+> DeepSeek Harness（DSH）Windows 通知插件：任务完成或需要你回答时弹出原生 toast，被忽略后在 DSH 自己的托盘图标上点亮 QQ 式红色未读角标（任务栏暖流改为可选）。每个事件都能在「插件 → dsh-notify-win」里单独配置。
 
 [English](README.md) | 中文
 
@@ -42,7 +42,7 @@
 - 🧷 **常驻 helper，跟随插件生命周期**：插件加载时启动一个 `dsh-toast-question.exe`，之后每次提问复用；在插件里关掉插件或退出 DSH 时回收（DSH 退出会关闭 stdio，helper 读到 EOF 自行退出），不再每次提问都拉起新进程，也不会留下孤儿进程。
 - ✅ **只有一条、不撒谎的回执**：点 Send 后问题 toast 直接收起，中间没有任何「已提交 / 已送达 / 已收到并回应」步骤；模型回答后只弹一条 toast，内容就是 **模型返回的第一行**（铺满 toast 一行宽度，超长以 `…` 截断，没有标题行）——这句话只可能来自真实完成的整条链路。模型没有可见文本时不弹回执（不编造）。取消会明确写「没有向 DSH 提交任何答案」；卡片填不进去则提示「请在 DSH 窗口中手动回答」。
 - 🖱️ **在 toast 里回答能直接送达 agent**：所选选项（含自定义文本、多个问题）会落到官方提问卡片并提交，卡住的 `ask_user_question` 立即返回
-- ⏰ **逐事件提醒**：每个事件（任务完成、压缩完成、回答回执、需要回答、需要批准、异常停止、已取消、文件修改）都能单独选择 toast / 托盘红点 / 任务栏暖流，并选择提醒在 toast 超时后开始还是事件发生时立即开始。在 **设置 → 通知** 里勾选，改动即时生效、无需重启。
+- ⏰ **逐事件提醒**：每个事件（任务完成、压缩完成、回答回执、需要回答、需要批准、异常停止、已取消、文件修改）都能单独选择 toast / 托盘红点 / 任务栏暖流，并选择提醒在 toast 超时后开始还是事件发生时立即开始。在 **插件 → dsh-notify-win** 里勾选，改动即时生效、无需重启。
 - 🖼️ 不使用 hero 大图：所有通知都只有应用角标，保持紧凑
 - 🪪 通知归属显示 **DeepSeek Harness** 与自带图标（自注册 AppUserModelID）；只有在品牌 notifier 无法创建时才退回系统 PowerShell 身份
 - 🚀 不注册 DSH 服务、不经过模型审批、不占用 settings 命名空间——只有一个常驻 helper 子进程
@@ -131,7 +131,7 @@ dsh plugin --profile web add dsh-notify-win
     answerSpeechTimeoutMs: 90000   # 送达后等待模型第一行的上限
     showProject: true          # 正文前缀显示项目标识
 
-    # 通知行为（设置 → 通知 里可视化编辑，即时生效）
+    # 通知行为（插件 → dsh-notify-win 里可视化编辑，即时生效）
     eventPolicy:
       done:      { toast: true, blink: true,  flash: false }
       compact:   { toast: true, blink: false, flash: false }
@@ -168,9 +168,11 @@ dsh plugin --profile web add dsh-notify-win
 
 模板支持 `{message}`、`{code}`、`{hint}`、`{reason}`、`{retry}`、`{retryMax}`。
 
-### 通知行为（设置 → 通知）
+### 通知行为（插件 → dsh-notify-win）
 
-同一张策略表也可以直接在 DSH 里勾选：**设置 → 通知**（由插件浏览器端注册）。每行是一个事件，三列分别是 toast、托盘红点、任务栏暖流。`eventPolicy` / `attention` 声明为 `.volatile()`，所以勾选会通过 DSH 的设置通道写入，运行中的插件在下一条通知就按新值执行，无需重启。
+同一张策略表也可以直接在 DSH 里勾选：**插件 → dsh-notify-win**（插件详情页里的一段设置，由浏览器端注册进 `plugins.bundle.config`）。每行是一个事件，三列分别是 toast、托盘红点、任务栏暖流；同一页上还有提醒时机和红点最长闪烁两个选择。`eventPolicy` / `attention` 声明为 `.volatile()`，所以勾选会通过 DSH 的设置通道写入，运行中的插件在下一条通知就按新值执行，无需重启。
+
+设置放在插件自己的页面里而不是「设置」里，是为了让全局设置列表保持精简：每装一个插件就多一个设置入口，列表很快就会变成噪音。
 
 关于托盘红点：DSH 的托盘图标属于 Electron 主进程，跨进程改它的位图是未文档化的，改坏了还会残留。所以 helper 不做替换，而是在图标所在的格子上盖一个**点击穿透的透明小窗**（`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`），把红点画上去：图标位置由官方接口 `Shell_NotifyIconGetRect` 查询（Electron 的图标宿主窗口是 `Electron_NotifyIconHostWindow`），窗口属于 helper 进程，helper 一退出红点就跟着消失。图标被 Windows 11 收进 `^` 溢出区、查不到位置时，自动回退到任务栏按钮角标（`ITaskbarList3::SetOverlayIcon`）。
 
@@ -225,7 +227,7 @@ dsh plugin --profile web add dsh-notify-win
 | 文件修改触发 | `tools/execute` 中 `write` / `edit` / `apply_patch` / `str_replace_editor` 成功返回（仅根 agent） |
 | 执行方式 | 所有通知、提问和 toast 点击都走常驻 .NET helper；没有 PowerShell 路径 |
 
-宿主端不注册 DSH 服务和工具；它导出 `Config` schema（即设置页表单），并消费生命周期事件。设置页由浏览器端注册进 `settings.section`。
+宿主端不注册 DSH 服务和工具；它导出 `Config` schema（即设置页表单），并消费生命周期事件。设置区块由浏览器端注册进插件详情页的 `plugins.bundle.config`。
 
 ### helper 生命周期
 
@@ -309,7 +311,7 @@ dsh-notify-win/
 ├── lib/                         # npm 包目录：JS、素材、构建后复制进来的 exe
 │   ├── config.js                # DEFAULTS、Config schema、效果策略
 │   ├── index.js                 # 宿主半：事件、helper 生命周期、回执
-│   ├── client.js                # 浏览器半：点击跳转 + 官方卡片驱动 + 设置页
+│   ├── client.js                # 浏览器半：点击跳转 + 官方卡片驱动 + 插件设置区
 │   ├── dsh-toast-question.exe   # 由 npm run build 复制（gitignored）
 │   └── dsh-*.png / dsh-*.ico    # 品牌素材
 ├── test/                        # 假 helper + 五组测试

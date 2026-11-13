@@ -1,6 +1,6 @@
 # dsh-notify-win
 
-> DeepSeek Harness (DSH) Windows notification plugin — native toast, a QQ-style unread badge on DSH's own tray icon, and an optional taskbar flash when a task finishes or your input is needed. Every event chooses its own reminders in Settings → Notifications.
+> DeepSeek Harness (DSH) Windows notification plugin — native toast, a QQ-style unread badge on DSH's own tray icon, and an optional taskbar flash when a task finishes or your input is needed. Every event chooses its own reminders on the plugin page (插件 → dsh-notify-win).
 
 English | [中文](README.zh.md)
 
@@ -42,7 +42,7 @@ English | [中文](README.zh.md)
 - 🧷 **Resident helper, plugin lifetime**: one `dsh-toast-question.exe` is started when the plugin is applied and reused for every question. Disabling the plugin or quitting DSH shuts it down (stdio EOF when DSH exits), so no per-question process spawn and no orphan process.
 - ✅ **One honest receipt**: submitting closes the question toast; nothing else pops up until the model answers, and then exactly one toast appears — the **model's first line**, filled to the toast width and cut with `…` when it is longer (no “已提交” / “已送达” / “已收到并回应” stages, no title line). Text that can only exist if the whole round trip really happened. If the model produces no visible text, nothing is shown (no invented receipt). Cancelling says “没有向 DSH 提交任何答案”; a card that could not be filled says “请在 DSH 窗口中手动回答”.
 - 🖱️ **Answering from the toast reaches the agent**: the chosen options (and custom text, across multiple questions) are applied to the official question card and submitted, so the blocked `ask_user_question` call returns immediately
-- ⏰ **Per-event reminders**: every event (task done, compaction, reply receipt, question, approval, error, cancel, file change) independently chooses toast / tray badge / taskbar flash, and whether the attention effects start right away or only after the toast times out. Configure it in **Settings → Notifications**; changes apply without a restart.
+- ⏰ **Per-event reminders**: every event (task done, compaction, reply receipt, question, approval, error, cancel, file change) independently chooses toast / tray badge / taskbar flash, and whether the attention effects start right away or only after the toast times out. Configure it on **插件 → dsh-notify-win**; changes apply without a restart.
 - 🖼️ Badge-only toasts: no hero banner in any kind — just the app icon in the header, so notifications stay compact
 - 🪪 Toasts are attributed to **DeepSeek Harness** with its own icon (registered AppUserModelID); the generic PowerShell toast identity is used only as a last resort if the branded notifier cannot be created
 - 🚀 One resident helper child process; the host half registers no DSH service and no tool (its Config schema only drives the settings page)
@@ -131,7 +131,7 @@ Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
     answerSpeechTimeoutMs: 90000   # how long to wait for the model's first line after delivery
     showProject: true          # prefix body with project label
 
-    # Notification behavior. Settings → Notifications edits these live.
+    # Notification behavior. The plugin page (插件 → dsh-notify-win) edits these live.
     eventPolicy:
       done:      { toast: true, blink: true,  flash: false }
       compact:   { toast: true, blink: false, flash: false }
@@ -168,9 +168,18 @@ Edit `$env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml`:
 
 Templates support `{message}`, `{code}`, `{hint}`, `{reason}`, `{retry}`, `{retryMax}`.
 
-### Notification behavior (Settings → Notifications)
+### Notification behavior (Plugins → dsh-notify-win)
 
-The same matrix is available as checkboxes in DSH: **Settings → Notifications** (the page is registered by this plugin's client half). Each row is one event; the three columns are the toast, the tray badge and the taskbar flash. `eventPolicy` and `attention` are declared `.volatile()`, so a checkbox writes through DSH's settings transport and the running plugin picks the new value up on the next event — no restart.
+The same matrix is available as switches in DSH: **插件 → dsh-notify-win**, i.e. a
+settings section on the plugin's own detail page (the client half registers it into
+`plugins.bundle.config`). Each row is one event; the three columns are the toast, the
+tray badge and the taskbar flash, and the same page carries the reminder timing and the
+badge's blink limit. `eventPolicy` and `attention` are declared `.volatile()`, so a
+switch writes through DSH's settings transport and the running plugin picks the new
+value up on the next event — no restart.
+
+The section lives on the plugin's page rather than in **Settings** so the global
+settings list stays short: one entry per installed plugin turns that list into noise.
 
 The tray badge note: DSH's tray icon belongs to the Electron main process; replacing its bitmap from another process is undocumented and can leave a broken icon behind, so nothing is replaced. The helper instead places a click-through layered window (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`) over the icon's cell and paints the dot there. The cell comes from the documented `Shell_NotifyIconGetRect` (Electron hosts its icon on `Electron_NotifyIconHostWindow`), and because the window belongs to the helper it disappears with it. When Windows 11 files the icon under the `^` overflow the rectangle is unavailable, so the dot falls back to a taskbar-button overlay (`ITaskbarList3::SetOverlayIcon`).
 
@@ -236,7 +245,7 @@ reason, so the plugin reports the retry count from the last retry record
 | Taskbar flash | `EnumWindows` + `FlashWindowEx` (`FLASHW_TRAY \| FLASHW_TIMERNOFG` = `2 \| 12` = 14); the OS stops it when DSH is foreground, with no periodic re-pulse |
 | Execution | Every notification, question and toast click goes through the resident .NET helper; there is no PowerShell path |
 
-The host half registers no DSH service and no tool; it exports a `Config` schema (the settings page form) and consumes lifecycle events. The settings page itself is registered by the client half into `settings.section`.
+The host half registers no DSH service and no tool; it exports a `Config` schema (the settings page form) and consumes lifecycle events. The settings section itself is registered by the client half into the plugin page (`plugins.bundle.config`).
 
 ### Helper lifecycle
 
