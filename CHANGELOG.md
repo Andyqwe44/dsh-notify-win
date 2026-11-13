@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **QQ-style reminder moved onto DSH's own tray icon.** `blink` now paints a red
+- **unread-dot reminder moved onto DSH's own tray icon.** `blink` now paints a red
   unread dot over DSH's notification-area icon: the helper places a click-through
   layered window (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`) on the
   icon's cell, located with the documented `Shell_NotifyIconGetRect`. The icon
@@ -75,13 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Per-event notification policy.** Every event (task done, context
   compaction, reply receipt, question, approval, error, cancellation, file
-  change) now resolves its own row: native toast, QQ-style tray blink and the
+  change) now resolves its own row: native toast, unread tray blink and the
   taskbar flash can be enabled independently, and the attention effects start
   either when the event fires or after its toast times out unanswered. The
   runtime exports a `Config` schema, so DSH renders the matrix in **Settings →
   Notifications**; the fields are `.volatile()`, which applies a checkbox to the
   running plugin without a restart.
-- **QQ-style tray blink.** The helper runs its own notification tray icon on a
+- **unread tray blink.** The helper runs its own notification tray icon on a
   dedicated STA thread and blinks a red unread dot between two frames. It stops
   when a DSH window is foreground, when the icon is clicked, when the
   question/approval is answered or resolved, when the helper shuts down, or

@@ -1,7 +1,7 @@
 {
   "name": "dsh-notify-win",
   "version": "0.8.1",
-  "description": "Native Windows toast plus a QQ-style unread badge on DSH's own notification-area icon, and an optional taskbar flash, when a task finishes or your input is needed.",
+  "description": "Native Windows toast plus an unread badge on DSH's own notification-area icon, and an optional taskbar flash, when a task finishes or your input is needed.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

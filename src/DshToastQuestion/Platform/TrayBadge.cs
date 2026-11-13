@@ -1,7 +1,7 @@
 namespace DshToastQuestion;
 
 /// <summary>
-/// QQ-style red dot drawn on top of DSH's own notification-area icon.
+/// chat-app-style red dot drawn on top of DSH's own notification-area icon.
 ///
 /// The tray icon belongs to the Electron main process. Replacing its bitmap
 /// from another process (`Shell_NotifyIcon` with a foreign window) is

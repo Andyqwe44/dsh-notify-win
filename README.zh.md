@@ -1,12 +1,18 @@
 # dsh-notify-win
 
-> DeepSeek Harness（DSH）Windows 通知插件：任务完成或需要你回答时弹出原生 toast，被忽略后在 DSH 自己的托盘图标上点亮 QQ 式红色未读角标（任务栏暖流改为可选）。每个事件都能在「插件 → dsh-notify-win」里单独配置。
+> DeepSeek Harness（DSH）Windows 通知插件：任务完成或需要你回答时弹出原生 toast，被忽略后在 DSH 自己的托盘图标上亮起红色未读角标（任务栏暖流改为可选）。每个事件都能在「插件 → dsh-notify-win」里单独配置。
 
 [English](README.md) | 中文
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![version](https://img.shields.io/badge/version-0.8.1-blue)
+
+## 为什么值得装
+
+- **你不在电脑前的时候**：任务跑完、或者卡在等你回答，系统 toast 一闪而过，专注助手还可能直接把它吞掉。
+- **红点会一直等你**：没人理的 toast 会把 DSH 托盘图标点亮成未读状态，回到 DSH 前台自动熄灭，不用手动关。
+- **不占托盘、也不占「设置」**：红点画在 DSH 自己的图标上（不会多出第二个鲸鱼），设置长在插件页里。
 
 ## 📸 截图
 
@@ -22,7 +28,7 @@
 
 ![单选问题 toast](docs/assets/screenshots/question-single-select.png)
 
-### toast 被忽略 → DSH 自己托盘图标上的 QQ 式红点
+### toast 被忽略 → DSH 自己托盘图标上的未读红点
 
 ![DSH 通知区域图标上闪烁的红色未读角标](docs/assets/screenshots/tray-badge.png)
 
@@ -34,12 +40,12 @@
 
 <img src="docs/assets/screenshots/taskbar-flash.png" alt="toast 超时后的任务栏暖流" style="max-width: 900px; width: 100%;" />
 
-> 截图来自 Windows 11。toast 被忽略后的默认提醒是 DSH 自己托盘图标上的红色未读角标（QQ 样式）；任务栏暖流需要按事件手动开启。策略表、提醒时机和红点时长全部在插件页上编辑，不会往「设置」里加条目。
+> 截图来自 Windows 11。toast 被忽略后的默认提醒是 DSH 自己托盘图标上的红色未读角标（IM 风格）；任务栏暖流需要按事件手动开启。策略表、提醒时机和红点时长全部在插件页上编辑，不会往「设置」里加条目。
 
 ## ✨ 功能
 
 - 🔔 **原生 Windows toast**（右下角，Win10/11 系统样式）
-- 🔴 **QQ 式托盘红点** —— toast 被忽略时，DSH 自己的通知区域图标右下角开始闪烁红色未读角标；回到 DSH 前台、回答问题、或到达时长上限后停止。图标本体不改、托盘区不新增图标；图标被收进 `^` 溢出区时自动改画到任务栏按钮上
+- 🔴 **托盘红点角标** —— toast 被忽略时，DSH 自己的通知区域图标右下角开始闪烁红色未读角标；回到 DSH 前台、回答问题、或到达时长上限后停止。图标本体不改、托盘区不新增图标；图标被收进 `^` 溢出区时自动改画到任务栏按钮上
 - 💡 **可选任务栏暖流**（`FlashWindowEx`）—— 默认关闭，可按事件开启；系统在 DSH 回到前台时停止
 - 🖱️ **点击跳转** — 点击 toast 自动打开 DSH 并切换到对应会话
 - ✅ **任务完成**时触发（根 agent 进入 `idle`）
@@ -269,6 +275,34 @@ dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 - DSH 窗口关闭时浏览器端无法填官方卡片；超过 `answerPendingTimeoutMs` 会如实提示「未收到 DSH 确认」，你仍可在 DSH 里回答。
 - Windows 不允许非打包桌面应用删除自己 Action Center 里的通知。问题已被处理后，旧 toast 可能还会留在通知中心直到过期，点击不会有动作。
 
+## ❓ 常见问题
+
+**toast 没弹出来**
+
+- 先看 Windows 的通知总开关和专注助手：设置 → 系统 → 通知，确认「DeepSeek Harness」在列表里且已开启，专注助手没在勿扰模式。
+- 首次通知会注册品牌身份（开始菜单快捷方式 + AppUserModelID）。如果标题还显示 `DeepSeekHarness` 且没有图标，重启一次资源管理器：`Stop-Process -Name explorer -Force; Start-Process explorer`
+- 确认 .NET 10 Desktop Runtime 已安装：`dotnet --list-runtimes` 里应有 `Microsoft.WindowsDesktop.App 10.x`。
+
+**红点没出现**
+
+- 看对应事件那一行的「红点」列是否勾选（默认只有完成 / 需要回答 / 需要批准 / 异常停止是开的）。
+- 提醒时机是「Toast 超时后」时，要等 toast 自己消失；手动点掉它不算超时。
+- 「最长闪烁」非 0 时到点就停；设成 0 才会一直闪到你回来。
+
+**托盘图标被收进 `^` 溢出区会怎样**
+
+查不到图标格子会连续两次落空（约 1.2 秒），随后自动改画到 DSH 的任务栏按钮角标上，不会静默丢掉提醒。
+
+**任务管理器里有个 `dsh-toast-question.exe`**
+
+那是插件的常驻 helper（toast、红点、暖流都由它做）。它**不创建任何托盘图标**；DSH 退出后它收到 EOF 会自己结束。
+
+**怎么彻底卸载**
+
+1. 「插件 → dsh-notify-win → 卸载」；
+2. 可选：删掉 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\DeepSeek Harness Notify.lnk`（一次性注册的品牌身份快捷方式）；
+3. 可选：设置 → 系统 → 通知 → 关掉「DeepSeek Harness」。
+
 ## 开发
 
 ```powershell
@@ -310,7 +344,7 @@ dsh-notify-win/
 │   │   ├── ToastIdentity.cs     # AUMID、Start Menu 快捷方式、协议
 │   │   ├── DshWindow.cs         # 查找/聚焦/启动 DSH
 │   │   ├── Attention.cs         # 统一的 StartAttention/StopAttention 入口
-│   │   ├── TrayBadge.cs         # QQ 式托盘红点：覆盖小窗、定位、定时器、停止条件
+│   │   ├── TrayBadge.cs         # 托盘红点角标：覆盖小窗、定位、定时器、停止条件
 │   │   ├── TaskbarBadge.cs      # 回退：任务栏按钮角标（ITaskbarList3）
 │   │   └── TaskbarFlash.cs      # FLASHW_TIMERNOFG / FLASHW_STOP
 │   ├── Interop/

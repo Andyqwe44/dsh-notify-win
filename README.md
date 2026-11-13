@@ -1,12 +1,18 @@
 # dsh-notify-win
 
-> DeepSeek Harness (DSH) Windows notification plugin — native toast, a QQ-style unread badge on DSH's own tray icon, and an optional taskbar flash when a task finishes or your input is needed. Every event chooses its own reminders on the plugin page (插件 → dsh-notify-win).
+> DeepSeek Harness (DSH) Windows notification plugin — native toast, an unread badge on DSH's own tray icon, and an optional taskbar flash when a task finishes or your input is needed. Every event chooses its own reminders on the plugin page (插件 → dsh-notify-win).
 
 English | [中文](README.zh.md)
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![version](https://img.shields.io/badge/version-0.8.1-blue)
+
+## Why install it
+
+- **For the times you are not at the desk**: a run finishes, or DSH is blocked on your answer — a system toast is gone in seconds, and Focus Assist may swallow it entirely.
+- **The dot waits for you**: an ignored toast lights up DSH's own tray icon and clears itself when you come back to DSH, so nothing has to be dismissed by hand.
+- **No extra tray icon, no extra Settings entry**: the dot is painted over DSH's existing icon, and the configuration lives on the plugin's own page.
 
 ## 📸 Screenshots
 
@@ -22,7 +28,7 @@ English | [中文](README.zh.md)
 
 ![Single-select question toast](docs/assets/screenshots/question-single-select.png)
 
-### Ignored toast → QQ-style unread badge on DSH's own tray icon
+### Ignored toast → unread badge on DSH's own tray icon
 
 ![Red unread badge blinking on the DSH notification-area icon](docs/assets/screenshots/tray-badge.png)
 
@@ -34,12 +40,12 @@ English | [中文](README.zh.md)
 
 <img src="docs/assets/screenshots/taskbar-flash.png" alt="Warm taskbar flash after an ignored toast" style="max-width: 900px; width: 100%;" />
 
-> Screenshots are from Windows 11. The default reminder after an ignored toast is the red unread badge on DSH's own notification-area icon (QQ style); the warm taskbar pulse is opt-in per event, and the notification matrix, its timing and the badge limit are all edited on the plugin's page — nothing is added to Settings.
+> Screenshots are from Windows 11. The default reminder after an ignored toast is the red unread badge on DSH's own notification-area icon (chat-app style); the warm taskbar pulse is opt-in per event, and the notification matrix, its timing and the badge limit are all edited on the plugin's page — nothing is added to Settings.
 
 ## ✨ Features
 
 - 🔔 **Native Windows toast** (bottom-right, Win10/11 system style)
-- 🔴 **QQ-style tray badge** — when a toast is ignored, a red unread dot blinks on DSH's own notification-area icon; the icon itself is untouched and no tray icon is added. It stops on a DSH foreground window, when the question is answered, or when the configured limit expires; if the icon is filed under the `^` overflow the dot moves to the taskbar button
+- 🔴 **unread tray badge** — when a toast is ignored, a red unread dot blinks on DSH's own notification-area icon; the icon itself is untouched and no tray icon is added. It stops on a DSH foreground window, when the question is answered, or when the configured limit expires; if the icon is filed under the `^` overflow the dot moves to the taskbar button
 - 💡 **Optional taskbar flash** (`FlashWindowEx`) — off by default, can be enabled per event; the OS stops it as soon as DSH comes to the foreground
 - 🖱️ **Click-to-focus** — clicking a toast opens DSH and switches to the corresponding session
 - ✅ Triggers when a **task finishes** (root agent goes `idle`)
@@ -287,6 +293,34 @@ The host half registers no DSH service and no tool; it exports a `Config` schema
 - If the DSH window is closed, the browser half cannot fill the official card; an honest “未收到 DSH 确认” follows after `answerPendingTimeoutMs` and you can still answer in DSH.
 - Windows does not allow an unpackaged desktop identity to delete its own toasts from Action Center. A toast whose question has already been settled can stay listed until it expires; clicking it does nothing.
 
+## ❓ Troubleshooting
+
+**No toast appears**
+
+- Check Windows notifications and Focus Assist: Settings → System → Notifications; make sure *DeepSeek Harness* is listed and enabled, and that Focus Assist is not silencing it.
+- The first toast registers the branded identity (Start Menu shortcut + AppUserModelID). If the header still reads `DeepSeekHarness` without an icon, restart Explorer once: `Stop-Process -Name explorer -Force; Start-Process explorer`
+- Make sure the .NET 10 Desktop Runtime is installed: `dotnet --list-runtimes` should list `Microsoft.WindowsDesktop.App 10.x`.
+
+**No badge appears**
+
+- Check the event's *Badge* column (only finish / answer needed / approval needed / error are on by default).
+- With *After the toast expires* timing the toast has to expire on its own; dismissing it by hand is not a timeout.
+- A non-zero *Blink for at most* stops at that minute; only 0 keeps it blinking until you come back.
+
+**What happens when Windows files the icon under the `^` overflow**
+
+The overlay misses twice (about 1.2 s) and then paints the taskbar button's overlay badge instead, so the reminder is never silently lost.
+
+**Why is `dsh-toast-question.exe` in Task Manager**
+
+It is the plugin's resident helper (toasts, badge, flash). It creates **no tray icon**; when DSH exits, its stdin reaches EOF and it exits on its own.
+
+**How to remove it completely**
+
+1. Plugins → dsh-notify-win → Uninstall;
+2. Optional: delete `%APPDATA%\Microsoft\Windows\Start Menu\Programs\DeepSeek Harness Notify.lnk` (the one-time branded identity shortcut);
+3. Optional: Settings → System → Notifications → turn off *DeepSeek Harness*.
+
 ## Development
 
 ```powershell
@@ -340,7 +374,7 @@ dsh-notify-win/
 │   │   ├── ToastIdentity.cs     # AUMID, Start Menu shortcut, protocol
 │   │   ├── DshWindow.cs         # find/focus/launch DSH
 │   │   ├── Attention.cs         # one StartAttention/StopAttention entry point
-│   │   ├── TrayBadge.cs         # QQ-style tray dot: click-through overlay, placement, timer
+│   │   ├── TrayBadge.cs         # tray unread dot: click-through overlay, placement, timer
 │   │   ├── TaskbarBadge.cs      # fallback: taskbar-button overlay (ITaskbarList3)
 │   │   └── TaskbarFlash.cs      # FLASHW_TIMERNOFG / FLASHW_STOP
 │   ├── Interop/
@@ -371,7 +405,7 @@ dsh-notify-win/
 - **V1 (implemented)**: done + compact + question toasts; single-select dropdown with custom answer; Cancel / Send; timeout → taskbar flash.
 - **V1.1 (implemented)**: paged multi-question toast with per-page drafts (dropdown + custom text); multi-select question toast by numbered input; multi-question card driving; honest two-stage receipt backed by the tool result and the model's first line (filled to the toast width, cut with …).
 - **V1.2 (implemented)**: one resident .NET helper for every notification, toast identity, click-to-focus and the taskbar flash; no PowerShell/`.ps1` path; every toast flashes only after it times out.
-- **V1.3 (implemented)**: per-event toast / taskbar badge / taskbar flash policy with a Settings → Notifications page; the QQ-style badge replaces the warm taskbar pulse as the default reminder; the file-change trigger; live config updates without a restart.
+- **V1.3 (implemented)**: per-event toast / taskbar badge / taskbar flash policy with a Settings → Notifications page; the chat-app-style badge replaces the warm taskbar pulse as the default reminder; the file-change trigger; live config updates without a restart.
 - **V1.4 (implemented)**: the dot is painted over DSH's own tray icon (click-through overlay placed with `Shell_NotifyIconGetRect`), with a taskbar-button fallback; the helper's own tray icon, the Win11 overflow pinning and the `trayIcon` setting are gone.
 - **V2 (planned)**: fully self-contained packaging (no .NET runtime install) and/or background activation so toast buttons submit without any foreground activation.
 
