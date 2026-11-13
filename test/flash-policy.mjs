@@ -77,7 +77,8 @@ check(
 // --- One attention entry point, driven by the host policy. ---
 check(/static void StartAttention\(EffectPolicy\? effects, string reason\)/.test(source),
   'helper has one StartAttention entry point')
-check(/if \(effects\.Blink\) StartTaskbarBadge/.test(source), 'StartAttention arms the taskbar badge when enabled')
+check(/if \(!StartTrayBadge/.test(source) && /else[\s\S]{0,80}StartTaskbarBadge|StartTaskbarBadge\(reason/.test(source),
+  'StartAttention prefers the tray dot and falls back to the taskbar badge')
 check(/if \(effects\.Flash\) FlashTaskbar/.test(source), 'StartAttention arms the taskbar flash when enabled')
 check(
   /static void StopAttention\(\)[\s\S]{0,160}StopTaskbarFlash\(\)[\s\S]{0,160}StopTaskbarBadge\(\)/.test(source),
@@ -94,6 +95,18 @@ check(/effects\?\.Timing == "immediate"/.test(source) && /Timing == "immediate"/
 check(/!effects\.Toast/.test(source), 'the receipt toast can be turned off')
 
 // --- QQ-style unread badge on DSH's own taskbar button. ---
+// --- QQ-style unread dot over DSH's own tray icon. ---
+check(/static bool StartTrayBadge\(/.test(source), 'helper owns the tray dot start')
+check(/Shell_NotifyIconGetRect/.test(source), 'the dot is placed with the documented tray rect API')
+check(/Electron_NotifyIconHostWindow/.test(source), "the dot finds Electron's tray host window")
+check(/WsExTransparent/.test(source) && /WsExLayered/.test(source) && /WsExNoActivate/.test(source),
+  'the dot window is layered and click-through')
+check(/SetProcessDpiAwarenessContext/.test(source) && /EnablePhysicalPixels\(\);/.test(source),
+  'the helper works in physical pixels so the dot lands on the icon')
+check(/static void StopTrayBadge\(/.test(source), 'helper owns the tray dot stop')
+check(/_blinkMaxMinutes/.test(source) && /tray badge stopped: timed out/.test(source),
+  'the tray dot has an expiry guard')
+
 check(await gone('../src/DshToastQuestion/Platform/TrayBlink.cs'), 'the extra tray icon implementation is gone')
 check(!/_trayIconMode|StartTrayBlink|StopTrayBlink|TrayBlinking/.test(source),
   'no tray-blink code remains in the helper')

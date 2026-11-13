@@ -34,7 +34,16 @@ static partial class Program
             Log("attention: blink=" + effects.Blink + " flash=" + effects.Flash +
                 " timing=" + (effects.Timing ?? "") + " focused=" + focused + " (" + reason + ")");
             if (focused) return;
-            if (effects.Blink) StartTaskbarBadge(reason, _blinkIntervalMs, _blinkMaxMinutes);
+            if (effects.Blink)
+            {
+                // Preferred: the dot sits on DSH's own notification-area icon.
+                // When that icon is filed in the Windows 11 overflow flyout the
+                // shell reports no rectangle, so fall back to the taskbar button.
+                if (!StartTrayBadge(reason, _blinkIntervalMs, _blinkMaxMinutes))
+                {
+                    StartTaskbarBadge(reason, _blinkIntervalMs, _blinkMaxMinutes);
+                }
+            }
             if (effects.Flash) FlashTaskbar();
         }
         catch (Exception error)
@@ -49,12 +58,14 @@ static partial class Program
     {
         StopTaskbarFlash();
         StopTaskbarBadge();
+        StopTrayBadge();
     }
 
-    /// <summary>Retire every effect and wait for the owned badge to be cleared.</summary>
+    /// <summary>Retire every effect and wait for the owned badges to be cleared.</summary>
     static void DisposeAttention()
     {
         StopTaskbarFlash();
         DisposeTaskbarBadge();
+        DisposeTrayBadge();
     }
 }

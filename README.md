@@ -1,6 +1,6 @@
 # dsh-notify-win
 
-> DeepSeek Harness (DSH) Windows notification plugin — native toast, a QQ-style unread badge on DSH's own taskbar button, and an optional taskbar flash when a task finishes or your input is needed. Every event chooses its own reminders in Settings → Notifications.
+> DeepSeek Harness (DSH) Windows notification plugin — native toast, a QQ-style unread badge on DSH's own tray icon, and an optional taskbar flash when a task finishes or your input is needed. Every event chooses its own reminders in Settings → Notifications.
 
 English | [中文](README.zh.md)
 
@@ -22,16 +22,16 @@ English | [中文](README.zh.md)
 
 ![Single-select question toast](docs/assets/screenshots/question-single-select.png)
 
-### Toast timeout → taskbar badge (default) or taskbar flash (optional)
+### Toast timeout → tray badge (default) or taskbar flash (optional)
 
-<img src="docs/assets/screenshots/taskbar-flash.png" alt="Taskbar badge / taskbar flash after toast timeout" style="max-width: 900px; width: 100%;" />
+<img src="docs/assets/screenshots/taskbar-flash.png" alt="Tray badge / taskbar flash after toast timeout" style="max-width: 900px; width: 100%;" />
 
-> Screenshots are from Windows 11. The default reminder after an ignored toast is a red unread badge on DSH's own taskbar button (the QQ-style dot); the warm taskbar pulse shown above is now opt-in per event.
+> Screenshots are from Windows 11. The default reminder after an ignored toast is a red unread badge on DSH's own notification-area icon (the QQ-style dot); the warm taskbar pulse shown above is now opt-in per event.
 
 ## ✨ Features
 
 - 🔔 **Native Windows toast** (bottom-right, Win10/11 system style)
-- 🔴 **QQ-style taskbar badge** — when a toast is ignored, a red unread dot blinks on DSH's own taskbar button (`ITaskbarList3` overlay icon); nothing is added to the notification area. It stops on a DSH foreground window, when the question is answered, or when the configured limit expires
+- 🔴 **QQ-style tray badge** — when a toast is ignored, a red unread dot blinks on DSH's own notification-area icon; the icon itself is untouched and no tray icon is added. It stops on a DSH foreground window, when the question is answered, or when the configured limit expires; if the icon is filed under the `^` overflow the dot moves to the taskbar button
 - 💡 **Optional taskbar flash** (`FlashWindowEx`) — off by default, can be enabled per event; the OS stops it as soon as DSH comes to the foreground
 - 🖱️ **Click-to-focus** — clicking a toast opens DSH and switches to the corresponding session
 - ✅ Triggers when a **task finishes** (root agent goes `idle`)
@@ -42,7 +42,7 @@ English | [中文](README.zh.md)
 - 🧷 **Resident helper, plugin lifetime**: one `dsh-toast-question.exe` is started when the plugin is applied and reused for every question. Disabling the plugin or quitting DSH shuts it down (stdio EOF when DSH exits), so no per-question process spawn and no orphan process.
 - ✅ **One honest receipt**: submitting closes the question toast; nothing else pops up until the model answers, and then exactly one toast appears — the **model's first line**, filled to the toast width and cut with `…` when it is longer (no “已提交” / “已送达” / “已收到并回应” stages, no title line). Text that can only exist if the whole round trip really happened. If the model produces no visible text, nothing is shown (no invented receipt). Cancelling says “没有向 DSH 提交任何答案”; a card that could not be filled says “请在 DSH 窗口中手动回答”.
 - 🖱️ **Answering from the toast reaches the agent**: the chosen options (and custom text, across multiple questions) are applied to the official question card and submitted, so the blocked `ask_user_question` call returns immediately
-- ⏰ **Per-event reminders**: every event (task done, compaction, reply receipt, question, approval, error, cancel, file change) independently chooses toast / taskbar badge / taskbar flash, and whether the attention effects start right away or only after the toast times out. Configure it in **Settings → Notifications**; changes apply without a restart.
+- ⏰ **Per-event reminders**: every event (task done, compaction, reply receipt, question, approval, error, cancel, file change) independently chooses toast / tray badge / taskbar flash, and whether the attention effects start right away or only after the toast times out. Configure it in **Settings → Notifications**; changes apply without a restart.
 - 🖼️ Badge-only toasts: no hero banner in any kind — just the app icon in the header, so notifications stay compact
 - 🪪 Toasts are attributed to **DeepSeek Harness** with its own icon (registered AppUserModelID); the generic PowerShell toast identity is used only as a last resort if the branded notifier cannot be created
 - 🚀 One resident helper child process; the host half registers no DSH service and no tool (its Config schema only drives the settings page)
@@ -170,9 +170,9 @@ Templates support `{message}`, `{code}`, `{hint}`, `{reason}`, `{retry}`, `{retr
 
 ### Notification behavior (Settings → Notifications)
 
-The same matrix is available as checkboxes in DSH: **Settings → Notifications** (the page is registered by this plugin's client half). Each row is one event; the three columns are the toast, the taskbar badge and the taskbar flash. `eventPolicy` and `attention` are declared `.volatile()`, so a checkbox writes through DSH's settings transport and the running plugin picks the new value up on the next event — no restart.
+The same matrix is available as checkboxes in DSH: **Settings → Notifications** (the page is registered by this plugin's client half). Each row is one event; the three columns are the toast, the tray badge and the taskbar flash. `eventPolicy` and `attention` are declared `.volatile()`, so a checkbox writes through DSH's settings transport and the running plugin picks the new value up on the next event — no restart.
 
-The taskbar badge note: the DSH tray icon belongs to the Electron main process, and a plugin runs in a child process without an Electron API or a renderer IPC for attention, so its icon cannot be animated from outside. The badge therefore goes on the **taskbar button** via `ITaskbarList3::SetOverlayIcon` — the same native, cross-process layer the helper already uses for `FlashWindowEx`. Nothing is added to the notification area and nothing has to be pinned in the `^` overflow; the trade-off is that a window hidden to the tray has no taskbar button, so the badge appears once the window is visible again (the toast and its Action Center entry cover the hidden case).
+The tray badge note: DSH's tray icon belongs to the Electron main process; replacing its bitmap from another process is undocumented and can leave a broken icon behind, so nothing is replaced. The helper instead places a click-through layered window (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`) over the icon's cell and paints the dot there. The cell comes from the documented `Shell_NotifyIconGetRect` (Electron hosts its icon on `Electron_NotifyIconHostWindow`), and because the window belongs to the helper it disappears with it. When Windows 11 files the icon under the `^` overflow the rectangle is unavailable, so the dot falls back to a taskbar-button overlay (`ITaskbarList3::SetOverlayIcon`).
 
 To disable:
 
@@ -224,7 +224,8 @@ reason, so the plugin reports the retry count from the last retry record
 | Trigger "file changed" | `tools/execute` for `write` / `edit` / `apply_patch` / `str_replace_editor` returning a successful result (root agents only) |
 | Done/compact/alert/notice toast | Resident .NET helper `notify` op; WinRT `Windows.UI.Notifications`, `NotifyIcon` balloon fallback. No per-notification process |
 | Effect policy | `lib/config.js` resolves one `{toast, blink, flash, timing}` row per event; the host sends it with `notify`/`question` and the helper applies it on show (`immediate`) or on the toast's timed-out dismissal (`after-timeout`) |
-| Taskbar badge | The helper owns `ITaskbarList3` on its own STA thread and blinks a red overlay icon on the DSH taskbar button; it clears on a DSH foreground window, an answer/resolve, or the configured limit, and never registers a tray icon |
+| Tray badge | The helper places a click-through layered window over DSH's tray icon (located with `Shell_NotifyIconGetRect`) and blinks a red dot on it; it clears on a DSH foreground window, an answer/resolve, or the configured limit, and never registers a tray icon or touches the icon bitmap |
+| Badge fallback | When the tray icon cannot be located (filed under `^`), the dot is drawn as an `ITaskbarList3` overlay on the taskbar button |
 | Interactive approval toast | DSH's own approval panel still shows; the toast is a remote control using the same `question` op: one fixed-choice card (`允许一次` / `拒绝`, no free-text input). Its answer is parked for the browser half, which switches to the owning session and clicks the panel; the panel remains the authority. Cancelling the toast leaves the decision to the panel, and an aborted turn retires the toast |
 | Interactive question toast | Resident .NET helper `question` op, spoken to over the child's stdin/stdout (newline-delimited JSON). One question = one card; several questions = one paged card (`问题 i/n`, 上一题/下一题/提交), with each page's draft restored through the toast `defaultInput` attribute |
 | Question answer receipt | The helper reports the selection and dismisses the question toast; the host parks it for the browser half, checks the `ask_user_question` tool result, then shows exactly one toast — `spoken` with the model's first line (filled to the toast width, cut with `…`). No pending, delivered or title toast |
@@ -251,12 +252,12 @@ The host half registers no DSH service and no tool; it exports a `Config` schema
 ## Known limitations
 
 - Native toast text is compact: only about 4 lines are displayed, so long content is truncated.
-- The native selection dropdown may collapse when the pointer moves onto the popup; if the toast is then dismissed by timeout, the configured reminder (taskbar badge by default) still tells you, and it stops once DSH is foreground.
+- The native selection dropdown may collapse when the pointer moves onto the popup; if the toast is then dismissed by timeout, the configured reminder (tray badge by default) still tells you, and it stops once DSH is foreground.
 - The .NET 10 Desktop Runtime is a hard requirement. Without it the helper cannot start and no notification can be shown; the host logs an explicit error. There is no PowerShell fallback.
 - The helper is a single long-lived process. If it crashes, the next notification asks the host to spawn it again; until then, notifications are dropped with a log line.
 - `FlashWindowEx` uses the system's warm-pulse highlight; custom colors are not possible.
-- Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background; an active flash is stopped by the OS when the window comes to the foreground. The taskbar badge is independent: it also stops when a DSH window is activated.
-- The taskbar badge needs a taskbar button. A window hidden to the tray has none, so the badge is applied once the window is visible again; `attention.blinkMaxMinutes` decides how long it stays (0 = until you come back).
+- Windows never flashes the foreground window — the taskbar button only flashes when DSH is in the background; an active flash is stopped by the OS when the window comes to the foreground. The tray badge is independent: it also stops when a DSH window is activated.
+- The tray badge is a topmost click-through window over the icon. When Windows 11 files the icon under the `^` overflow the dot moves to the taskbar button instead; `attention.blinkMaxMinutes` decides how long it stays (0 = until you come back).
 - A cancelled turn is reported as "cancelled" (not "task complete"); set `notifyOnCancel: false` to silence it, or `notifyOnError: false` to silence abnormal-stop alerts.
 - Notifications are deduplicated per session within `dedupMs` (default 1500 ms). A second `idle` for an already-reported turn stays quiet.
 - Multi-question toasts page by re-showing the native toast. Windows animates the old toast out and the new one in, so each page change has a short visual gap; the `已答` line carries the context across it. Multi-question cards always use the long duration (about 25 s).
@@ -318,7 +319,8 @@ dsh-notify-win/
 │   │   ├── ToastIdentity.cs     # AUMID, Start Menu shortcut, protocol
 │   │   ├── DshWindow.cs         # find/focus/launch DSH
 │   │   ├── Attention.cs         # one StartAttention/StopAttention entry point
-│   │   ├── TaskbarBadge.cs      # QQ-style taskbar badge: overlay icon, timer, stop rules
+│   │   ├── TrayBadge.cs         # QQ-style tray dot: click-through overlay, placement, timer
+│   │   ├── TaskbarBadge.cs      # fallback: taskbar-button overlay (ITaskbarList3)
 │   │   └── TaskbarFlash.cs      # FLASHW_TIMERNOFG / FLASHW_STOP
 │   ├── Interop/
 │   │   ├── TaskbarList3.cs      # ITaskbarList3 overlay-icon interface
@@ -349,7 +351,7 @@ dsh-notify-win/
 - **V1.1 (implemented)**: paged multi-question toast with per-page drafts (dropdown + custom text); multi-select question toast by numbered input; multi-question card driving; honest two-stage receipt backed by the tool result and the model's first line (filled to the toast width, cut with …).
 - **V1.2 (implemented)**: one resident .NET helper for every notification, toast identity, click-to-focus and the taskbar flash; no PowerShell/`.ps1` path; every toast flashes only after it times out.
 - **V1.3 (implemented)**: per-event toast / taskbar badge / taskbar flash policy with a Settings → Notifications page; the QQ-style badge replaces the warm taskbar pulse as the default reminder; the file-change trigger; live config updates without a restart.
-- **V1.4 (implemented)**: the badge is drawn on DSH's own taskbar button (`ITaskbarList3` overlay) and the helper's own tray icon, the Win11 overflow pinning and the `trayIcon` setting are gone.
+- **V1.4 (implemented)**: the dot is painted over DSH's own tray icon (click-through overlay placed with `Shell_NotifyIconGetRect`), with a taskbar-button fallback; the helper's own tray icon, the Win11 overflow pinning and the `trayIcon` setting are gone.
 - **V2 (planned)**: fully self-contained packaging (no .NET runtime install) and/or background activation so toast buttons submit without any foreground activation.
 
 ## License

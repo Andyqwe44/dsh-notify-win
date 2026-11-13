@@ -53,6 +53,30 @@ static partial class Program
         // Set before --focus too: a cold toast click needs the same diagnostics.
         _logPath = GetArg(args, "--log");
 
+        // Screen coordinates below are physical: the tray rect comes from the
+        // shell in physical pixels, so the helper must not scale them again.
+        EnablePhysicalPixels();
+
+        // Self-test for the tray badge: paints the dot over DSH's own tray icon
+        // for a few seconds regardless of focus, so the placement can be
+        // eyeballed. Diagnostics only; the host never passes this flag.
+        var badgeTest = GetArg(args, "--tray-badge-test");
+        if (badgeTest.Length > 0)
+        {
+            _overlayIgnoreFocus = true;
+            if (!StartTrayBadge("tray-badge-test", 600, 5))
+            {
+                Log("tray badge test: DSH tray icon not found");
+                return 2;
+            }
+            var seconds = int.TryParse(badgeTest, out var parsed) ? Math.Clamp(parsed, 1, 30) : 5;
+            Thread.Sleep(seconds * 1000);
+            StopTrayBadge();
+            Thread.Sleep(400);
+            Log("tray badge test done");
+            return 0;
+        }
+
         // The DSH desktop host starts this helper from a Node-mode Electron
         // process, so ELECTRON_RUN_AS_NODE is inherited. Shell-launching
         // "DeepSeek Harness.exe" with that variable still set starts it as plain

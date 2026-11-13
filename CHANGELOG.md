@@ -10,19 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **QQ-style reminder moved onto DSH's own taskbar button.** `blink` now draws a
-  red unread badge on the DSH window (`ITaskbarList3::SetOverlayIcon`) and
-  toggles it until DSH comes to the foreground, the toast is answered/resolved,
-  or `attention.blinkMaxMinutes` expires. No extra tray icon is registered, so
-  nothing is added to the notification area and nothing has to be pinned in the
-  `^` overflow.
+- **QQ-style reminder moved onto DSH's own tray icon.** `blink` now paints a red
+  unread dot over DSH's notification-area icon: the helper places a click-through
+  layered window (`WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`) on the
+  icon's cell, located with the documented `Shell_NotifyIconGetRect`. The icon
+  bitmap is never replaced and no tray icon is registered, so nothing is added to
+  the notification area and nothing has to be pinned in the ^ overflow. The dot
+  toggles until DSH comes to the foreground, the toast is answered/resolved, or
+  `attention.blinkMaxMinutes` expires.
+- When Windows 11 files the icon under the `^` overflow the shell reports no
+  rectangle; the helper then falls back to an `ITaskbarList3::SetOverlayIcon`
+  badge on the taskbar button.
 - **Removed** the helper-owned notification tray icon, its Windows 11 overflow
   promotion (`HKCU\Control Panel\NotifyIconSettings` → `IsPromoted`) and the
   `attention.trayIcon` setting. A profile that still carries `trayIcon:` is
   accepted; the schema drops the unknown key.
-- A window hidden to the tray has no taskbar button, so the badge is applied
-  once the window is visible again; the toast (and its Action Center entry)
-  covers that case.
 
 ## [0.6.0] - 2026-11-13
 
