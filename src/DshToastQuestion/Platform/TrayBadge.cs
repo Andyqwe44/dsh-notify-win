@@ -18,6 +18,8 @@ namespace DshToastQuestion;
 static partial class Program
 {
     const int OverlayTickMs = 100;
+    const int RectRefreshMs = 300;
+    const int FallbackAfterMisses = 4;
     const string OverlayClassName = "DshTrayBadgeOverlay";
 
     static readonly object OverlayLock = new();
@@ -27,6 +29,10 @@ static partial class Program
     static long _overlayStartedAt;
     static long _overlayToggledAt;
     static bool _overlayOn;
+    static long _rectCheckedAt;
+    static bool _rectValid;
+    static RECT _rectCell;
+    static int _overlayMisses;
     static Thread? _overlayThread;
     static IntPtr _overlayWindow;
     static WndProc? _overlayProc;
@@ -198,15 +204,34 @@ static partial class Program
             }
             return;
         }
-        if (!TryGetDshTrayIconRect(out var cell))
+        var now = Environment.TickCount64;
+        if (now - _rectCheckedAt >= RectRefreshMs)
+        {
+            _rectCheckedAt = now;
+            _rectValid = TryGetDshTrayIconRect(out var fresh);
+            if (_rectValid) _rectCell = fresh;
+        }
+        if (!_rectValid)
         {
             if (_overlayOn)
             {
                 ShowWindow(window, SwHide);
                 _overlayOn = false;
             }
+            // The icon was moved into the Windows 11 overflow flyout while the
+            // dot was up; the cell is gone for good, so retarget the reminder
+            // to the taskbar button instead of silently dropping it.
+            if (++_overlayMisses >= FallbackAfterMisses)
+            {
+                _overlayMisses = 0;
+                lock (OverlayLock) _overlayRequested = false;
+                Log("tray badge lost the icon; falling back to the taskbar badge");
+                StartTaskbarBadge(_overlayReason, _blinkIntervalMs, _blinkMaxMinutes);
+            }
             return;
         }
+        _overlayMisses = 0;
+        var cell = _rectCell;
 
         // The tray cell spans the taskbar height; Windows 11 draws the icon at
         // half the cell width, centred.
@@ -233,7 +258,6 @@ static partial class Program
             ApplyDotPosition(x, y, dot);
         }
 
-        var now = Environment.TickCount64;
         if (now - _overlayToggledAt >= _blinkIntervalMs)
         {
             _overlayToggledAt = now;

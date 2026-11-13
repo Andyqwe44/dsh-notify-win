@@ -106,6 +106,9 @@ check(/SetProcessDpiAwarenessContext/.test(source) && /EnablePhysicalPixels\(\);
 check(/static void StopTrayBadge\(/.test(source), 'helper owns the tray dot stop')
 check(/_blinkMaxMinutes/.test(source) && /tray badge stopped: timed out/.test(source),
   'the tray dot has an expiry guard')
+check(/RectRefreshMs/.test(source), 'the tray rect is re-read instead of cached forever')
+check(/tray badge lost the icon; falling back to the taskbar badge/.test(source),
+  'an icon moved into the overflow mid-blink retargets to the taskbar badge')
 
 check(await gone('../src/DshToastQuestion/Platform/TrayBlink.cs'), 'the extra tray icon implementation is gone')
 check(!/_trayIconMode|StartTrayBlink|StopTrayBlink|TrayBlinking/.test(source),

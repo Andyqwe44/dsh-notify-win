@@ -20,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `attention.blinkMaxMinutes` expires.
 - When Windows 11 files the icon under the `^` overflow the shell reports no
   rectangle; the helper then falls back to an `ITaskbarList3::SetOverlayIcon`
-  badge on the taskbar button.
+  badge on the taskbar button. The cell is re-read every 300 ms while blinking,
+  so an icon moved into the overflow mid-reminder is retargeted to the taskbar
+  button within about a second instead of silently losing the dot.
 - **Removed** the helper-owned notification tray icon, its Windows 11 overflow
   promotion (`HKCU\Control Panel\NotifyIconSettings` → `IsPromoted`) and the
   `attention.trayIcon` setting. A profile that still carries `trayIcon:` is
