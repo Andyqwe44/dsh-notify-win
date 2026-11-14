@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-11-14
+
+### Fixed
+
+- A drive that throws no longer kills the answer loop: the page reports the
+  failure to the host (nswer-ack with the exception text) and keeps serving
+  the next answer. Diagnostics gained the last acknowledgement and the
+  non-consuming pendingSession peek (/dsh-notify/v2/diag).
+
 ## [0.8.4] - 2026-11-14
 
 ### Changed

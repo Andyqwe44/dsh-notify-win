@@ -6,7 +6,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.8.4-blue)
+![version](https://img.shields.io/badge/version-0.8.5-blue)
 
 ## 为什么值得装
 
@@ -70,7 +70,7 @@ dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
 > 需要 `pnpm` 在 PATH 中（没有就先 `corepack enable`）。详见 [安装](#安装)。
 >
-> npm 上的 `dsh-notify-win` 还停在 `0.1.1`（当时的 PowerShell 版），`0.8.4` 因账号 2FA 暂未发布；在那之前请用 GitHub 源安装，仓库里的就是最新版。
+> npm 上的 `dsh-notify-win` 还停在 `0.1.1`（当时的 PowerShell 版），`0.8.5` 因账号 2FA 暂未发布；在那之前请用 GitHub 源安装，仓库里的就是最新版。
 
 ## 安装
 

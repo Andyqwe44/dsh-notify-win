@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.8.4-blue)
+![version](https://img.shields.io/badge/version-0.8.5-blue)
 
 ## Why install it
 
@@ -70,7 +70,7 @@ dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
 > Requires `pnpm` on PATH (`corepack enable` if missing). See [Install](#install) for details.
 >
-> The npm package still sits at `0.1.1` (the old PowerShell implementation); `0.8.4` is not published yet because the account's 2FA device is lost. Install from GitHub — the repository is the current version.
+> The npm package still sits at `0.1.1` (the old PowerShell implementation); `0.8.5` is not published yet because the account's 2FA device is lost. Install from GitHub — the repository is the current version.
 
 ## Install
 
