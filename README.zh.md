@@ -7,6 +7,8 @@
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![version](https://img.shields.io/badge/version-0.8.5-blue)
+[![CI](https://github.com/Andyqwe44/dsh-notify-win/actions/workflows/ci.yml/badge.svg)](https://github.com/Andyqwe44/dsh-notify-win/actions/workflows/ci.yml)
+[![Pages](https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f)](https://andyqwe44.github.io/dsh-notify-win/)
 
 ## 为什么值得装
 
