@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
       - name: Build resident helper
         run: npm run build
       - name: Syntax check

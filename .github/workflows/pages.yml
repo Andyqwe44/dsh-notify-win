@@ -23,8 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      # Deploy both docs/ (HTML + screenshots) and lib/ (hero/logo assets
-      // referenced by index.html via ../lib/ paths).
+      # Deploy docs/ (HTML + screenshots) and the stray logo assets in lib/
+      # that older copies of index.html referenced.
       - name: Prepare pages artifact
         run: |
           rm -rf _page
