@@ -11,7 +11,9 @@ import { fileURLToPath } from 'node:url'
 const EXE = fileURLToPath(new URL('../lib/dsh-toast-question.exe', import.meta.url))
 
 function start() {
-  const child = spawn(EXE, ['--serve'], {
+  // --no-wake: the wake/restore ops are parsed for real, but never touch the
+  // window of the machine running the tests.
+  const child = spawn(EXE, ['--serve', '--no-wake'], {
     stdio: ['pipe', 'pipe', 'ignore'],
     windowsHide: true,
   })

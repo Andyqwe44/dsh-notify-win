@@ -48,6 +48,8 @@ static partial class Program
     static bool _wakeWasMinimized;
     static long _wakeUntil;
     static System.Threading.Timer? _wakeTimer;
+    /// <summary>Test-only: `--no-wake` keeps every window untouched.</summary>
+    static bool _wakeDisabled;
 
     /// <summary>Show/minimize one window without ever changing the foreground.</summary>
     static bool ShowWindowInPlace(IntPtr hwnd, int showCmd)
@@ -62,6 +64,11 @@ static partial class Program
     /// <summary>Show DSH without taking focus, for one answer click.</summary>
     static void WakeDshForAnswer()
     {
+        if (_wakeDisabled)
+        {
+            Log("wake suppressed: --no-wake");
+            return;
+        }
         lock (WakeGate)
         {
             var hwnd = _wakeHwnd != IntPtr.Zero ? _wakeHwnd : FindDshWindow();

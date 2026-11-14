@@ -91,6 +91,9 @@ static partial class Program
             return 0;
         }
 
+        // Tests spawn the helper without touching the user's windows.
+        _wakeDisabled = HasFlag(args, "--no-wake");
+
         // The DSH desktop host starts this helper from a Node-mode Electron
         // process, so ELECTRON_RUN_AS_NODE is inherited. Shell-launching
         // "DeepSeek Harness.exe" with that variable still set starts it as plain
