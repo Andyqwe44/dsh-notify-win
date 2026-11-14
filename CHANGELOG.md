@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-11-14
+
+### Changed
+
+- **The answer channel is fully event-driven.** The hanging request has no
+  timeout and the card-driving waits use `MutationObserver` instead of polling,
+  so nothing runs on a schedule: no 500 ms poll, no 4 s visibility heartbeat,
+  no 25 s request timeout, no 6 s fallback-wake timer. The request lives until an
+  answer is parked, the page goes away, or the plugin unloads.
+- The automatic wake fallback is gone: live measurement showed a restore
+  without activation does not wake the renderer (three restore calls tested), so
+  it could not work as a silent fallback. The helper keeps `wake` / `restore`
+  and `--wake-test` as a manual diagnostic only.
+- `answerWakeGraceMs` removed from the config schema; the diagnostics route
+  moved to `/dsh-notify/v2/diag`.
+
 ## [0.8.3] - 2026-11-14
 
 ### Fixed
