@@ -189,12 +189,12 @@ const QUESTIONS = [{
     answers: [{ id: 'Q1', selected: ['B'] }],
   })
 
-  const pickup = await callRoute(harness.routes, '/dsh-notify/pending-answer', {
-    url: '/dsh-notify/pending-answer?latest=1',
+  const pickup = await callRoute(harness.routes, '/dsh-notify/v2/pending-answer', {
+    url: '/dsh-notify/v2/pending-answer?latest=1',
   })
   assert(pickup.body.id === question.id && pickup.body.answers[0].selected[0] === 'B', 'browser picks up the parked answer')
 
-  await callRoute(harness.routes, '/dsh-notify/answer-ack', {
+  await callRoute(harness.routes, '/dsh-notify/v2/answer-ack', {
     method: 'POST',
     body: { id: question.id, ok: true },
   })
@@ -234,8 +234,8 @@ const QUESTIONS = [{
   )
   const question = await until(() => harness.helper().writes.find((message) => message.op === 'question'))
   harness.helper().emit({ ev: 'answer', id: question.id, sessionId: 'S2', answers: [{ id: 'Q1', selected: ['B'] }] })
-  await callRoute(harness.routes, '/dsh-notify/pending-answer', { url: '/dsh-notify/pending-answer?latest=1' })
-  await callRoute(harness.routes, '/dsh-notify/answer-ack', { method: 'POST', body: { id: question.id, ok: true } })
+  await callRoute(harness.routes, '/dsh-notify/v2/pending-answer', { url: '/dsh-notify/v2/pending-answer?latest=1' })
+  await callRoute(harness.routes, '/dsh-notify/v2/answer-ack', { method: 'POST', body: { id: question.id, ok: true } })
   resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['A'] }] } })
   await tool
   const mismatch = await until(() => harness.helper().writes.find((message) => message.op === 'status' && message.state === 'mismatch'))
@@ -254,8 +254,8 @@ const QUESTIONS = [{
   )
   const question = await until(() => harness.helper().writes.find((message) => message.op === 'question'))
   harness.helper().emit({ ev: 'answer', id: question.id, sessionId: 'S5', answers: [{ id: 'Q1', selected: ['A'] }] })
-  await callRoute(harness.routes, '/dsh-notify/pending-answer', { url: '/dsh-notify/pending-answer?latest=1' })
-  await callRoute(harness.routes, '/dsh-notify/answer-ack', { method: 'POST', body: { id: question.id, ok: true } })
+  await callRoute(harness.routes, '/dsh-notify/v2/pending-answer', { url: '/dsh-notify/v2/pending-answer?latest=1' })
+  await callRoute(harness.routes, '/dsh-notify/v2/answer-ack', { method: 'POST', body: { id: question.id, ok: true } })
   resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['A'] }] } })
   await tool
 
@@ -283,8 +283,8 @@ const QUESTIONS = [{
   )
   const question = await until(() => harness.helper().writes.find((message) => message.op === 'question'))
   harness.helper().emit({ ev: 'answer', id: question.id, sessionId: 'S6', answers: [{ id: 'Q1', selected: ['A'] }] })
-  await callRoute(harness.routes, '/dsh-notify/pending-answer', { url: '/dsh-notify/pending-answer?latest=1' })
-  await callRoute(harness.routes, '/dsh-notify/answer-ack', { method: 'POST', body: { id: question.id, ok: true } })
+  await callRoute(harness.routes, '/dsh-notify/v2/pending-answer', { url: '/dsh-notify/v2/pending-answer?latest=1' })
+  await callRoute(harness.routes, '/dsh-notify/v2/answer-ack', { method: 'POST', body: { id: question.id, ok: true } })
   resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['A'] }] } })
   await tool
   harness.handlers['agent/assistant-stream']({
@@ -315,7 +315,7 @@ const QUESTIONS = [{
   )
   const question = await until(() => harness.helper().writes.find((message) => message.op === 'question'))
   harness.helper().emit({ ev: 'answer', id: question.id, sessionId: 'S3', answers: [{ id: 'Q1', selected: ['A'] }] })
-  await callRoute(harness.routes, '/dsh-notify/pending-answer', { url: '/dsh-notify/pending-answer?latest=1' })
+  await callRoute(harness.routes, '/dsh-notify/v2/pending-answer', { url: '/dsh-notify/v2/pending-answer?latest=1' })
   resolveTool({ isError: false, content: [], value: { answers: [{ id: 'Q1', selected: ['A'] }] } })
   await tool
   harness.handlers['session/event'](

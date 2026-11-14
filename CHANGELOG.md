@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-14
+
+### Fixed
+
+- **Answering from the toast while DSH is minimized, without moving the
+  window.** Chromium throttles timers in a hidden renderer (1/s, then 1/min),
+  which is why the 500 ms poll could sit for a minute. The page now waits on a
+  hanging request instead (`/dsh-notify/v2/wait-answer`): a response is
+  delivered to a hidden renderer like any other event, so the parked answer
+  arrives immediately, DSH's own card submits it in the background and the
+  window never appears or takes focus. The waits inside the card-driving code
+  use `MessageChannel` tasks instead of `setTimeout` for the same reason.
+- The helper wake is now only the fallback, armed with a 6 s grace
+  (`answerWakeGraceMs`) and retired as soon as the page consumes the answer or
+  acknowledges it. When it does fire it restores and briefly activates the
+  window (Chromium only un-hides on activation), then minimizes and hands the
+  foreground back.
+
+### Changed
+
+- The plugin's HTTP routes moved to `/dsh-notify/v2/…` so a half-registered
+  hot reload cannot shadow them; registration now logs a duplicate instead of
+  failing the whole plugin.
+
 ## [0.8.2] - 2026-11-14
 
 ### Fixed

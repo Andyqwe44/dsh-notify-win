@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.8.2-blue)
+![version](https://img.shields.io/badge/version-0.8.3-blue)
 
 ## Why install it
 
@@ -56,7 +56,7 @@ English | [中文](README.zh.md)
 - 🧷 **Resident helper, plugin lifetime**: one `dsh-toast-question.exe` is started when the plugin is applied and reused for every question. Disabling the plugin or quitting DSH shuts it down (stdio EOF when DSH exits), so no per-question process spawn and no orphan process.
 - ✅ **One honest receipt**: submitting closes the question toast; nothing else pops up until the model answers, and then exactly one toast appears — the **model's first line**, filled to the toast width and cut with `…` when it is longer (no “已提交” / “已送达” / “已收到并回应” stages, no title line). Text that can only exist if the whole round trip really happened. If the model produces no visible text, nothing is shown (no invented receipt). Cancelling says “没有向 DSH 提交任何答案”; a card that could not be filled says “请在 DSH 窗口中手动回答”.
 - 🖱️ **Answering from the toast reaches the agent**: the chosen options (and custom text, across multiple questions) are applied to the official question card and submitted, so the blocked `ask_user_question` call returns immediately
-- 🪟 **Answerable while DSH is minimized**: with the window minimized or covered, the helper restores it for a few hundred milliseconds — no activation, no focus — so DSH's own card submits the answer, then puts it straight back. Nothing bypasses DSH and nothing stays on top
+- 🪟 **Answerable while DSH is minimized**: a hidden page no longer needs a timer. It waits on a **hanging request** (a response reaches a hidden renderer like any other event), DSH's own card submits in the background, and the window never moves or takes focus. The helper wake is only the 6 s fallback for a page that cannot act at all
 - ⏰ **Per-event reminders**: every event (task done, compaction, reply receipt, question, approval, error, cancel, file change) independently chooses toast / tray badge / taskbar flash, and whether the attention effects start right away or only after the toast times out. Configure it on **插件 → dsh-notify-win**; changes apply without a restart.
 - 🖼️ Badge-only toasts: no hero banner in any kind — just the app icon in the header, so notifications stay compact
 - 🪪 Toasts are attributed to **DeepSeek Harness** with its own icon (registered AppUserModelID); the generic PowerShell toast identity is used only as a last resort if the branded notifier cannot be created
@@ -70,7 +70,7 @@ dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
 > Requires `pnpm` on PATH (`corepack enable` if missing). See [Install](#install) for details.
 >
-> The npm package still sits at `0.1.1` (the old PowerShell implementation); `0.8.2` is not published yet because the account's 2FA device is lost. Install from GitHub — the repository is the current version.
+> The npm package still sits at `0.1.1` (the old PowerShell implementation); `0.8.3` is not published yet because the account's 2FA device is lost. Install from GitHub — the repository is the current version.
 
 ## Install
 
@@ -256,8 +256,8 @@ reason, so the plugin reports the retry count from the last retry record
 | Badge fallback | When the tray icon cannot be located (filed under `^`), the dot is drawn as an `ITaskbarList3` overlay on the taskbar button |
 | Interactive approval toast | DSH's own approval panel still shows; the toast is a remote control using the same `question` op: one fixed-choice card (`允许一次` / `拒绝`, no free-text input). Its answer is parked for the browser half, which switches to the owning session and clicks the panel; the panel remains the authority. Cancelling the toast leaves the decision to the panel, and an aborted turn retires the toast |
 | Interactive question toast | Resident .NET helper `question` op, spoken to over the child's stdin/stdout (newline-delimited JSON). One question = one card; several questions = one paged card (`问题 i/n`, 上一题/下一题/提交), with each page's draft restored through the toast `defaultInput` attribute |
-| Background answer | The official card stays the only answerer: the host parks the toast choice for the browser half, and when no page is visible it asks the helper to restore the window for that click (`wake`, no activation, no focus). The page submits its card on the `visibilitychange` event and the host sends `restore`, which puts the window back to its previous minimized state. A 15 s safety timer in the helper restores it even if the page never reports back |
-| Question answer receipt | The helper reports the selection and dismisses the question toast; the host parks it for the browser half (waking the window first when no page is visible), checks the `ask_user_question` tool result, then shows exactly one toast — `spoken` with the model's first line (filled to the toast width, cut with `…`). No pending, delivered or title toast |
+| Background answer | The official card stays the only answerer: the host parks the toast choice and the page waits on a **hanging request** (`/dsh-notify/v2/wait-answer`). A response reaches a hidden renderer like any other event, so the page clicks its card in the background — no timer, no window move, no focus change. The helper wake is only the 6 s fallback for a page that cannot act: it restores and briefly activates the window, then `answer-ack` minimizes it and hands the foreground back |
+| Question answer receipt | The helper reports the selection and dismisses the question toast; the host parks it for the browser half, checks the `ask_user_question` tool result, then shows exactly one toast — `spoken` with the model's first line (filled to the toast width, cut with `…`). No pending, delivered or title toast |
 | Toast identity / protocol / focus | Helper startup registers the branded AUMID, Start Menu shortcut and `dsh-notify://` handler; clicking a toast focuses DSH in-process (or via `--focus` on the cold path) |
 | Helper lifetime | Plugin `apply` starts it → `ctx.effect` disposal sends `shutdown`; DSH exit closes stdin (EOF) and the helper exits; a crashed host leaves no orphan |
 | Taskbar flash | `EnumWindows` + `FlashWindowEx` (`FLASHW_TRAY \| FLASHW_TIMERNOFG` = `2 \| 12` = 14); the OS stops it when DSH is foreground, with no periodic re-pulse |
@@ -292,7 +292,7 @@ The host half registers no DSH service and no tool; it exports a `Config` schema
 - Multi-question toasts page by re-showing the native toast. Windows animates the old toast out and the new one in, so each page change has a short visual gap; the `已答` line carries the context across it. Multi-question cards always use the long duration (about 25 s).
 - A custom answer wins over the dropdown selection on the same page, exactly like the previous single-question toast; clear the text box if you only want the dropdown choice.
 - The receipt cannot be faked by the UI: “spoken” is the model's own first line (cut with … to fit one toast line) and is the only toast shown after submitting. If the model produces no visible text (for example it immediately calls another tool), no receipt toast appears at all.
-- With the DSH window minimized or covered, answering from the toast restores it for a few hundred milliseconds — no focus stealing, straight back to minimized afterwards, so the taskbar button may flash once. A window hidden to the tray is not woken: the answer is parked and applied when you open DSH.
+- With the DSH window minimized or covered, the page submits the answer in the background — the window does not appear and does not take focus. Only when the page cannot act (crashed, or an older client) does the helper wake it as a fallback: restore, brief activation, submit, then minimize again and hand the foreground back, so the taskbar may flash once. A window hidden to the tray is not woken: the answer is parked and applied when you open DSH.
 - Windows does not allow an unpackaged desktop identity to delete its own toasts from Action Center. A toast whose question has already been settled can stay listed until it expires; clicking it does nothing.
 
 ## ❓ Troubleshooting

@@ -22,8 +22,8 @@ static partial class Program
     // A safety timer restores the window even when no `restore` arrives (a
     // crashed page, a session switch), so a wake can never leave DSH up.
     // ---------------------------------------------------------------------
-    const int SwShowMinNoActive = 7;
     static readonly IntPtr HwndBottom = new(1);
+    const int SwMinimize = 6;
     const long WakeTimeoutMs = 15000;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -100,14 +100,18 @@ static partial class Program
                     ? "wake: restoring the minimized window for one click"
                     : "wake: raising the covered window for one click");
             }
-            // Restore without activation, then raise without activation so the
-            // renderer is un-occluded (Chromium throttles it otherwise).
+            // Restore without activation first, then raise so the window is
+            // on screen. Chromium only un-hides the renderer once the window is
+            // the active one, so a fallback wake has to take the foreground for
+            // a moment — the click lands in the page and `restore` hands the
+            // foreground straight back to the next window.
             if (IsIconic(hwnd) && !ShowWindowInPlace(hwnd, SwShowNoActivate))
             {
                 ShowWindow(hwnd, SwShowNoActivate);
             }
             SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
                 SwpNomove | SwpNosize | SwpNoactivate | SwpShowWindow);
+            if (!SetForegroundWindow(hwnd)) Log("wake: foreground refused; the page may stay asleep");
         }
     }
 
@@ -128,9 +132,9 @@ static partial class Program
             {
                 if (minimized)
                 {
-                    // SW_SHOWMINNOACTIVE: minimize without activating the next
-                    // window, which SW_MINIMIZE would do.
-                    if (!ShowWindowInPlace(hwnd, SwShowMinNoActive)) ShowWindow(hwnd, SwShowMinNoActive);
+                    // SW_MINIMIZE also activates the next top-level window, so
+                    // the foreground goes back to what the user was using.
+                    ShowWindow(hwnd, SwMinimize);
                 }
                 else if (GetForegroundWindow() != hwnd)
                 {

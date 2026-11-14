@@ -116,9 +116,9 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
     h.helper().emit({ ev: 'answer', id: approval.id, sessionId: 'root', answers: [{ id: 'approval', selected: ['允许一次'] }] })
   }
   await YIELD()
-  const peek = await callRoute(h, '/dsh-notify/pending-answer', '/dsh-notify/pending-answer?peek=1')
-  const taken = await callRoute(h, '/dsh-notify/pending-answer',
-    `/dsh-notify/pending-answer?latest=1&id=${encodeURIComponent(approval?.id ?? '')}`)
+  const peek = await callRoute(h, '/dsh-notify/v2/pending-answer', '/dsh-notify/v2/pending-answer?peek=1')
+  const taken = await callRoute(h, '/dsh-notify/v2/pending-answer',
+    `/dsh-notify/v2/pending-answer?latest=1&id=${encodeURIComponent(approval?.id ?? '')}`)
   release('fallback')
   const outcome = await pending
   const retired = h.helper().writes.find((w) => w.op === 'status' && w.id === approval?.id && w.state === 'resolved')
@@ -147,7 +147,7 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   await YIELD()
   release('fallback')
   const outcome = await pending
-  const peek = await callRoute(h, '/dsh-notify/pending-answer', '/dsh-notify/pending-answer?peek=1')
+  const peek = await callRoute(h, '/dsh-notify/v2/pending-answer', '/dsh-notify/v2/pending-answer?peek=1')
   const b3Ok = outcome === 'fallback' && peek.available === false
   console.log(`Case B3 approval cancel: outcome=${outcome}, parked=${peek.available} -> ${b3Ok ? 'PASS' : 'FAIL'}`)
   if (!b3Ok) process.exit(1)
