@@ -6,6 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-14
+
+### Fixed
+
+- **Answering from the toast while DSH is minimized.** A question is a forwarded
+  `user-questions/request` waterfall whose only answerer is the official card,
+  and Chromium throttles the hidden page that renders it: the toast answer sat
+  parked until the window was restored. The host now prepends its own listener
+  (`{ prepend: true }`, ahead of the harness forwarder) and, while no page is
+  visible — minimized, covered by a full-screen app, or closed — settles the
+  question itself from the toast choice. A page that becomes visible hands the
+  request back to its card, so the in-window flow is unchanged; a card that was
+  already on screen when the window was minimized is still answerable from the
+  toast, and the parked answer retires it once the page wakes.
+- The `ask_user_question` hook awaits its toast before entering the tool
+  pipeline, so the hold decision can never race the toast that makes the
+  question answerable.
+
+### Added
+
+- `GET /dsh-notify/state`: which pages reported themselves visible, whether the
+  host currently owns a question, and the question toast it tracks. Enough for
+  a bug report to say who answered a question without reading DSH's console.
+
 ## [0.8.1] - 2026-11-13
 
 ### Removed

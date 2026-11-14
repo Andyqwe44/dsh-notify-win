@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-win",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Native Windows toast plus an unread badge on DSH's own notification-area icon, and an optional taskbar flash, when a task finishes or your input is needed.",
   "type": "module",
   "main": "lib/index.js",
@@ -16,7 +16,7 @@
   "scripts": {
     "build": "node scripts/build-helper.mjs",
     "check": "node --check lib/config.js && node --check lib/index.js && node --check lib/client.js && node --check scripts/build-helper.mjs",
-    "test": "node test/policy.mjs && node test/flash-policy.mjs && node test/smoke.mjs && node test/proof.mjs && node test/helper-protocol.mjs",
+    "test": "node test/policy.mjs && node test/flash-policy.mjs && node test/smoke.mjs && node test/proof.mjs && node test/helper-protocol.mjs && node test/background-answer.mjs",
     "prepublishOnly": "npm run build && npm run check && npm test"
   },
   "dependencies": {

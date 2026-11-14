@@ -86,8 +86,11 @@ const notesOf = (h) => h.helper().writes.filter((message) => message.op === 'not
   await YIELD()
   const questions = h.helper().writes.filter((w) => w.op === 'question' && w.approval !== true)
   const notes = notesOf(h)
+  // The ask hook awaits its toast before entering the tool pipeline (the
+  // held-question listener must know a toast exists), so the two calls may
+  // reach `next` in either order; both must still pass through.
   const bOk = questions.length === 1 && questions[0].questions.length === 1 &&
-    notes.length === 0 && nextCalls.join(',') === 'tool,pwsh'
+    notes.length === 0 && [...nextCalls].sort().join(',') === 'pwsh,tool'
   console.log(`Case B skip/waterfall/ask-toast: questions=${questions.length}, notifications=${notes.length}, next=${nextCalls.join(',')} -> ${bOk ? 'PASS' : 'FAIL'}`)
   if (!bOk) process.exit(1)
   h.dispose()

@@ -60,7 +60,7 @@ export function createHarness(plugin, config = {}) {
   const listeners = new Map()
   const spawns = []
   const disposers = []
-  const WATERFALL_EVENTS = new Set(['tools/execute', 'approval/request'])
+  const WATERFALL_EVENTS = new Set(['tools/execute', 'approval/request', 'user-questions/request'])
   let fake = null
 
   const ctx = {
@@ -89,9 +89,12 @@ export function createHarness(plugin, config = {}) {
       }
       return undefined
     },
-    on(name, fn) {
+    on(name, fn, options) {
       const list = listeners.get(name) ?? []
-      list.push(fn)
+      // Cordis places a prepended listener before every existing one; the
+      // held-question listener depends on that ordering.
+      if (options === true || options?.prepend === true) list.unshift(fn)
+      else list.push(fn)
       listeners.set(name, list)
     },
     effect(fn) {

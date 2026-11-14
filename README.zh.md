@@ -6,7 +6,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078d4)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![version](https://img.shields.io/badge/version-0.8.1-blue)
+![version](https://img.shields.io/badge/version-0.8.2-blue)
 
 ## 为什么值得装
 
@@ -56,6 +56,7 @@
 - 🧷 **常驻 helper，跟随插件生命周期**：插件加载时启动一个 `dsh-toast-question.exe`，之后每次提问复用；在插件里关掉插件或退出 DSH 时回收（DSH 退出会关闭 stdio，helper 读到 EOF 自行退出），不再每次提问都拉起新进程，也不会留下孤儿进程。
 - ✅ **只有一条、不撒谎的回执**：点 Send 后问题 toast 直接收起，中间没有任何「已提交 / 已送达 / 已收到并回应」步骤；模型回答后只弹一条 toast，内容就是 **模型返回的第一行**（铺满 toast 一行宽度，超长以 `…` 截断，没有标题行）——这句话只可能来自真实完成的整条链路。模型没有可见文本时不弹回执（不编造）。取消会明确写「没有向 DSH 提交任何答案」；卡片填不进去则提示「请在 DSH 窗口中手动回答」。
 - 🖱️ **在 toast 里回答能直接送达 agent**：所选选项（含自定义文本、多个问题）会落到官方提问卡片并提交，卡住的 `ask_user_question` 立即返回
+- 🪟 **最小化时也能回答**：DSH 窗口最小化 / 被全屏应用盖住 / 页面关掉时，问题由宿主在后台直接结算，不再等被 Windows 限流的页面去点卡片——toast 里选完，答案当场到达模型；把窗口再打开时，已显示的那张卡片会自动退场
 - ⏰ **逐事件提醒**：每个事件（任务完成、压缩完成、回答回执、需要回答、需要批准、异常停止、已取消、文件修改）都能单独选择 toast / 托盘红点 / 任务栏暖流，并选择提醒在 toast 超时后开始还是事件发生时立即开始。在 **插件 → dsh-notify-win** 里勾选，改动即时生效、无需重启。
 - 🖼️ 不使用 hero 大图：所有通知都只有应用角标，保持紧凑
 - 🪪 通知归属显示 **DeepSeek Harness** 与自带图标（自注册 AppUserModelID）；只有在品牌 notifier 无法创建时才退回系统 PowerShell 身份
@@ -69,7 +70,7 @@ dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 
 > 需要 `pnpm` 在 PATH 中（没有就先 `corepack enable`）。详见 [安装](#安装)。
 >
-> npm 上的 `dsh-notify-win` 还停在 `0.1.1`（当时的 PowerShell 版），`0.8.1` 因账号 2FA 暂未发布；在那之前请用 GitHub 源安装，仓库里的就是最新版。
+> npm 上的 `dsh-notify-win` 还停在 `0.1.1`（当时的 PowerShell 版），`0.8.2` 因账号 2FA 暂未发布；在那之前请用 GitHub 源安装，仓库里的就是最新版。
 
 ## 安装
 
@@ -233,7 +234,8 @@ dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 | 完成/压缩/告警/取消 toast | 常驻 .NET helper 的 `notify` op；WinRT `Windows.UI.Notifications`，失败时不弹托盘气泡，直接交给红点/暖流；helper 不占托盘图标。不再为每条通知启动进程 |
 | 交互审批 toast | DSH 自己的审批面板照常显示；toast 只是它的遥控器，复用同一套 `question` op：单张固定选项卡片（`允许一次` / `拒绝`），没有自定义输入。答案暂存给浏览器端，由浏览器端切换到所属会话并点击面板，面板仍是最终权威。点「取消」把决定留给面板；回合取消/中止时撤掉 toast |
 | 交互问题 toast | 常驻 .NET helper 的 `question` op，通过子进程 stdin/stdout 的 JSON 行通信。单题一张卡；多题一张分页卡（`问题 i/n`、上一题/下一题/提交），每页草稿通过 toast 的 `defaultInput` 属性恢复 |
-| 回答回执 | helper 上报选择并收起问题 toast → 宿主暂存给浏览器端并核对 `ask_user_question` 的 tool result → 只弹一条带模型第一行的 `spoken`（铺满一行、超出以 … 截断，无标题行）；没有 pending / delivered toast |
+| 后台答题 | `user-questions/request` 是转发瀑布，官方卡片是唯一答题人。插件以 `{ prepend: true }` 抢在转发器之前：所有页面都不可见时（最小化 / 被全屏窗口盖住 / 页面已关闭），宿主自己接管这道题，直接用 toast 的选择结算，不再等被 Chromium 限流的渲染器。页面重新可见时把请求交还官方卡片；卡片已经显示后才最小化的情况同样能在 toast 里回答，答案同时留给页面，卡片醒来后自行退场 |
+| 回答回执 | helper 上报选择并收起问题 toast → 宿主结算瀑布（页面不可见时）或暂存给浏览器端点击官方卡片 → 核对 `ask_user_question` 的 tool result → 只弹一条带模型第一行的 `spoken`（铺满一行、超出以 … 截断，无标题行）；没有 pending / delivered toast |
 | 身份 / 协议 / 点击聚焦 | helper 启动时注册 AUMID、Start Menu 快捷方式和 `dsh-notify://`；点击 toast 由 helper 在进程内聚焦 DSH（冷启动走 `--focus`） |
 | helper 生命周期 | 插件 `apply` 启动 → `ctx.effect` 销毁时发 `shutdown`；DSH 退出关闭 stdin（EOF），helper 自行退出；宿主崩溃也不会留下孤儿 |
 | 任务栏闪烁 | `EnumWindows` + `FlashWindowEx`（`FLASHW_TRAY \| FLASHW_TIMERNOFG` = `2 \| 12` = 14；系统在 DSH 回到前台时停止，无周期重闪） |
@@ -272,7 +274,7 @@ dsh plugin --profile web add github:Andyqwe44/dsh-notify-win
 - 多问题 toast 通过重新显示原生 toast 来翻页，Windows 会把旧 toast 收起、新 toast 滑入，因此每次翻页都有一小段视觉间隔；`已答` 行用于跨页保留上下文。多问题卡片固定使用 long 时长（约 25 秒）。
 - 同一页里自定义答案优先于下拉选择（与原来的单题 toast 一致）；只想用下拉选择时，把文本框清空即可。
 - 回执无法被界面伪造：「已回应」来自模型自己输出的第一行（按 toast 一行宽度截断，超出补 …），并且是唯一的一条回执。如果模型没有输出可见文本（例如立刻又去调用工具），不会弹回执 toast。
-- DSH 窗口关闭时浏览器端无法填官方卡片；超过 `answerPendingTimeoutMs` 会如实提示「未收到 DSH 确认」，你仍可在 DSH 里回答。
+- DSH 窗口最小化、被全屏应用盖住或页面被关掉时，问题由宿主在后台直接结算：答案不再等浏览器端点击卡片，toast 里选完就立刻到达模型。页面里已经显示出来的那张卡片，会在页面重新可见后自动退场（暂存答案 60 秒内有效）；超过这个时间点一下卡片右上角关闭即可，此时问题早已被回答过。
 - Windows 不允许非打包桌面应用删除自己 Action Center 里的通知。问题已被处理后，旧 toast 可能还会留在通知中心直到过期，点击不会有动作。
 
 ## ❓ 常见问题
