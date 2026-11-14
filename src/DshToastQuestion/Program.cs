@@ -10,7 +10,7 @@ namespace DshToastQuestion;
 /// alive for the whole plugin lifetime. They speak newline-delimited JSON over
 /// the child's stdin/stdout:
 ///
-///   host -> helper  { "op": "notify" | "question" | "status" | "shutdown" | "ping", ... }
+///   host -> helper  { "op": "notify" | "question" | "status" | "attention" | "config" | "wake" | "restore" | "shutdown" | "ping", ... }
 ///   helper -> host  { "ev": "ready" | "answer" | "cancel" | "pong", ... }
 ///
 /// Lifecycle follows the host by construction: when DSH exits (the service
@@ -74,6 +74,20 @@ static partial class Program
             StopTrayBadge();
             Thread.Sleep(400);
             Log("tray badge test done");
+            return 0;
+        }
+
+        // Diagnostics only: show the answer wake on demand (restore the window
+        // without activation, hold it for N ms, put it back) so the effect can
+        // be eyeballed. The host never passes this flag.
+        var wakeTest = GetArg(args, "--wake-test");
+        if (wakeTest.Length > 0)
+        {
+            var holdMs = int.TryParse(wakeTest, out var parsedHold) ? Math.Clamp(parsedHold, 300, 10000) : 2000;
+            WakeDshForAnswer();
+            Thread.Sleep(holdMs);
+            RestoreDshAfterAnswer();
+            Log("wake test done");
             return 0;
         }
 
@@ -154,7 +168,8 @@ static partial class Program
 
         // The host is gone (EOF) or asked us to stop: clear live toasts and
         // make sure the shell is not left flashing for a notification nobody
-        // owns anymore.
+        // owns anymore — and that a wake never leaves DSH's window up.
+        try { RestoreDshAfterAnswer(); } catch (Exception error) { Log("wake cleanup failed: " + error.Message); }
         CleanupToasts();
         Log("helper exit");
         return 0;
@@ -183,6 +198,15 @@ static partial class Program
             // Badge blink timing from the plugin settings.
             case "config":
                 ApplyAttentionConfig(message);
+                break;
+            // One answer click needs a visible, un-throttled page: the host
+            // parks the toast answer, wakes the window for the click and asks
+            // for `restore` as soon as the page reports back.
+            case "wake":
+                WakeDshForAnswer();
+                break;
+            case "restore":
+                RestoreDshAfterAnswer();
                 break;
             case "shutdown":
                 _stopping = true;

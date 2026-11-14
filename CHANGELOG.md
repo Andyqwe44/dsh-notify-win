@@ -10,25 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Answering from the toast while DSH is minimized.** A question is a forwarded
-  `user-questions/request` waterfall whose only answerer is the official card,
-  and Chromium throttles the hidden page that renders it: the toast answer sat
-  parked until the window was restored. The host now prepends its own listener
-  (`{ prepend: true }`, ahead of the harness forwarder) and, while no page is
-  visible — minimized, covered by a full-screen app, or closed — settles the
-  question itself from the toast choice. A page that becomes visible hands the
-  request back to its card, so the in-window flow is unchanged; a card that was
-  already on screen when the window was minimized is still answerable from the
-  toast, and the parked answer retires it once the page wakes.
-- The `ask_user_question` hook awaits its toast before entering the tool
-  pipeline, so the hold decision can never race the toast that makes the
-  question answerable.
+- **Answering from the toast while DSH is minimized.** A question is still
+  answered by DSH's own card — the host never settles the question behind its
+  back — but Chromium throttles a hidden window's timers, so the card click
+  waited until the window was restored. The host now parks the toast answer,
+  asks the resident helper to restore and raise the window for the click
+  (`wake`: no activation, no focus change), and sends `restore` when the page
+  reports back, putting the window back to its previous minimized state. The
+  page applies the parked answer on the `visibilitychange` event instead of
+  waiting for the next poll tick, so the window is only up for a moment. A 15 s
+  safety timer in the helper restores it even when the page never reports back.
 
 ### Added
 
 - `GET /dsh-notify/state`: which pages reported themselves visible, whether the
-  host currently owns a question, and the question toast it tracks. Enough for
-  a bug report to say who answered a question without reading DSH's console.
+  host currently believes answering needs a wake, and the parked answer it is
+  waiting on. Enough for a bug report to say what happened without reading DSH's
+  console.
+- `wake` / `restore` helper ops, covered by the protocol test and by a new
+  `background-answer` suite that pins the "never settle it ourselves" contract.
 
 ## [0.8.1] - 2026-11-13
 

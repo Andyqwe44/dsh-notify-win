@@ -87,6 +87,15 @@ function assert(ok, label) {
   const pong2 = await helper.next((m) => m.ev === 'pong' && m !== pong)
   assert(pong2.ev === 'pong', 'config + attention are accepted without a crash')
 
+  // The answer wake: finding no DSH window (this test session may have one, so
+  // only "accepted without a crash" is asserted) and restoring an inactive
+  // wake must both be harmless no-ops.
+  helper.send({ op: 'wake' })
+  helper.send({ op: 'restore' })
+  helper.send({ op: 'ping' })
+  const pong3 = await helper.next((m) => m.ev === 'pong' && m !== pong && m !== pong2)
+  assert(pong3.ev === 'pong', 'wake + restore are accepted without a crash')
+
   helper.send({ op: 'shutdown' })
   const code = await waitExit(helper.child)
   assert(code === 0, 'shutdown exits 0')
